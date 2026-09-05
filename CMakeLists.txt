@@ -210,7 +210,7 @@ ELSE()
   message("Intel SIMD disabled")
 ENDIF()
 
-add_subdirectory("AjkMedian")
+add_subdirectory("Median")
 
 # uninstall target
 configure_file(

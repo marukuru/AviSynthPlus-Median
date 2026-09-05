@@ -71,12 +71,12 @@ done:
 //////////////////////////////////////////////////////////////////////////////
 // Interleaved RGB(A) - image is flipped vertically compared to YUY2
 //////////////////////////////////////////////////////////////////////////////
-void print_rgb(PVideoFrame& dst, unsigned int line, const char* string, bool alpha)
+void print_rgb(PVideoFrame& dst, unsigned int line, const char* string, bool alpha, int component_size)
 {
   unsigned char* text_buffer;
 
   int text_width = string_to_bitmap(string, text_buffer);
-  int image_width = dst->GetPitch() / (alpha ? 4 : 3);
+  int image_width = dst->GetPitch() / ((alpha ? 4 : 3) * component_size);
 
   unsigned char* end = dst->GetWritePtr();
   unsigned char* row = dst->GetWritePtr() + ((dst->GetHeight() - FONT_SCALE * FONT_HEIGHT * line - 1) * dst->GetPitch());
@@ -90,16 +90,25 @@ void print_rgb(PVideoFrame& dst, unsigned int line, const char* string, bool alp
       if (row < end)
         goto done;
 
-      unsigned char* pixel = row;
-
-      for (int x = 0; x < std::min(text_width, image_width); x++)
-      {
-        *pixel++ = text[x]; // R
-        *pixel++ = text[x]; // G
-        *pixel++ = text[x]; // B
-
-        if (alpha)
-          *pixel++ = 255; // A
+      if (component_size == 1) {
+        unsigned char* pixel = row;
+        for (int x = 0; x < std::min(text_width, image_width); x++)
+        {
+          *pixel++ = text[x]; // R
+          *pixel++ = text[x]; // G
+          *pixel++ = text[x]; // B
+          if (alpha) *pixel++ = 255; // A
+        }
+      } else if (component_size == 2) {
+        uint16_t* pixel = (uint16_t*)row;
+        for (int x = 0; x < std::min(text_width, image_width); x++)
+        {
+          uint16_t val = text[x] ? 65535 : 0;
+          *pixel++ = val; // R
+          *pixel++ = val; // G
+          *pixel++ = val; // B
+          if (alpha) *pixel++ = 65535; // A
+        }
       }
 
       row = row - dst->GetPitch();
@@ -116,12 +125,12 @@ done:
 //////////////////////////////////////////////////////////////////////////////
 // Planar colourspaces
 //////////////////////////////////////////////////////////////////////////////
-void print_planar(PVideoFrame& dst, unsigned int line, const char* string)
+void print_planar(PVideoFrame& dst, unsigned int line, const char* string, int component_size)
 {
   unsigned char* text_buffer;
 
   int text_width = string_to_bitmap(string, text_buffer);
-  int image_width = dst->GetPitch();
+  int image_width = dst->GetPitch() / component_size;
 
   unsigned char* row = dst->GetWritePtr(PLANAR_Y) + (line * FONT_HEIGHT * FONT_SCALE * dst->GetPitch(PLANAR_Y));
   unsigned char* end = dst->GetWritePtr(PLANAR_Y) + (dst->GetHeight(PLANAR_Y) * dst->GetPitch(PLANAR_Y)) - 1;
@@ -132,10 +141,19 @@ void print_planar(PVideoFrame& dst, unsigned int line, const char* string)
 
     for (int n = 0; n < FONT_SCALE; n++)
     {
-      unsigned char* pixel = row;
-
-      for (int x = 0; x < std::min(text_width, image_width); x++)
-        *pixel++ = text[x]; // Y
+      if (component_size == 1) {
+        unsigned char* pixel = row;
+        for (int x = 0; x < std::min(text_width, image_width); x++)
+          *pixel++ = text[x]; // Y
+      } else if (component_size == 2) {
+        uint16_t* pixel = (uint16_t*)row;
+        for (int x = 0; x < std::min(text_width, image_width); x++)
+          *pixel++ = text[x] ? 65535 : 0; // Y
+      } else if (component_size == 4) {
+        float* pixel = (float*)row;
+        for (int x = 0; x < std::min(text_width, image_width); x++)
+          *pixel++ = text[x] ? 1.0f : 0.0f; // Y
+      }
 
       row = row + dst->GetPitch();
 

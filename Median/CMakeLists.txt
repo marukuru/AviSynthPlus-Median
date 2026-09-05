@@ -5,7 +5,7 @@
 # "Visual Studio 16 2019" + LLVM 8.0 (clang) optional platform generator Win32 and x64
 CMAKE_MINIMUM_REQUIRED( VERSION 3.8.2 )
 
-set(PluginName "AjkMedian")
+set(PluginName "Median")
 
 if (NOT WIN32)
   string(TOLOWER "${PluginName}" PluginName)
@@ -16,9 +16,10 @@ project(${ProjectName} LANGUAGES CXX)
 
 Include("Files.cmake")
 
-add_library(${PluginName} SHARED ${AjkMedian_Sources})
+add_library(${PluginName} SHARED ${Median_Sources})
 
-set_target_properties(${PluginName} PROPERTIES "OUTPUT_NAME" "${PluginName}")
+set(PLUGIN_VERSION "0.7")
+set_target_properties(${PluginName} PROPERTIES "OUTPUT_NAME" "${PluginName}.${PLUGIN_VERSION}")
 if (MINGW)
   set_target_properties(${PluginName} PROPERTIES PREFIX "")
   set_target_properties(${PluginName} PROPERTIES IMPORT_PREFIX "")
@@ -30,7 +31,7 @@ IF(ENABLE_INTEL_SIMD)
 ENDIF()
 
 # Automatically group source files according to directory structure
-foreach(FILE ${AjkMedian_Sources}) 
+foreach(FILE ${Median_Sources}) 
   get_filename_component(PARENT_DIR "${FILE}" PATH)
 
   string(REGEX REPLACE "(\\./)" "" GROUP "${PARENT_DIR}")

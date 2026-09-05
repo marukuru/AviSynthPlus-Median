@@ -1,4 +1,4 @@
-# AjkMedian
+# Median
 An Avisynth Median Filter by ajk
 
 ## Links
@@ -13,10 +13,47 @@ https://forum.doom9.org/showpost.php?p=1864406&postcount=55
 
 Vapoursynth port https://github.com/dubhater/vapoursynth-median
 
+## Usage
+
+The plugin provides three functions: `Median`, `TemporalMedian`, and `MedianBlend`.
+
+### `Median`
+Calculates a pixel-by-pixel median across multiple input clips.
+```avisynth
+Median(clip1, clip2, clip3, ..., bool chroma=true, int sync=0, int samples=4096, bool debug=false, int threads=1)
+```
+- **clip1, clip2, ...**: Requires an odd number of clips between 3 and 25. All clips must have the same format and dimensions.
+- **chroma**: Set to `false` to disable chroma processing (or alpha channel processing for RGB32).
+- **sync**: Radius for temporal sync (default 0).
+- **samples**: Number of points to sample for sync calculations.
+- **debug**: Set to `true` to print debug information on the output frames.
+- **threads**: Number of threads to use for parallel processing (default 1).
+
+### `TemporalMedian`
+Applies a temporal median filter on a single clip.
+```avisynth
+TemporalMedian(clip, int radius=1, bool chroma=true, bool debug=false, int threads=1)
+```
+- **clip**: The input clip.
+- **radius**: Temporal radius (1 to 12, default 1).
+- **chroma**: Process chroma.
+- **debug**: Enable debug output.
+- **threads**: Number of threads to use.
+
+### `MedianBlend`
+A more configurable median function that allows dropping the highest and lowest extremes and blending the rest.
+```avisynth
+MedianBlend(clip1, clip2, clip3, ..., int low=1, int high=1, bool chroma=true, int sync=0, int samples=4096, bool debug=false, int threads=1)
+```
+- **clip1, clip2, ...**: Requires between 3 and 25 clips.
+- **low**: Number of lowest pixel values to discard.
+- **high**: Number of highest pixel values to discard.
+- *(Remaining parameters are the same as `Median`)*
+
 ## Change log
 
 20220301 v0.7 (pinterf)
-  - move to github: https://github.com/pinterf/AjkMedian
+  - move to github: https://github.com/pinterf/Median
   - add README.md, build
   - add Window version resource to DLL
   - Update Avisynth headers
@@ -24,7 +61,7 @@ Vapoursynth port https://github.com/dubhater/vapoursynth-median
   - move to VS2019 (v142 toolset)
   - add CMake build environment
   - Linux/GCC friendly source
-  - DLL/so name is changed to AjkMedian/libajkpedian (from simple Median - possible name collisions)
+  - DLL/so name is changed to Median/libmedian (from simple Median - possible name collisions)
 
 20190201 v0.6 (TomArrow)
   - https://forum.doom9.org/showthread.php?p=1864406#post1864406
@@ -69,8 +106,8 @@ From the 'build' folder under project root:
 
 * Clone repo
 
-        git clone https://github.com/pinterf/AjkMedian
-        cd AjkMedian
+        git clone https://github.com/pinterf/Median
+        cd Median
         cmake -B build -S .
         cmake --build build
 
@@ -85,7 +122,7 @@ From the 'build' folder under project root:
 
 * Find binaries at
 
-        build/AjkMedian/AjkMedian.so
+        build/Median/Median.so
 
 * Install binaries
 
