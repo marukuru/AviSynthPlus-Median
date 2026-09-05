@@ -69,8 +69,8 @@ public:
 
   void debugf(const char* fmt, ...);
 
-  unsigned int line;
-  void textf(PVideoFrame& dst, const char* fmt, ...);
+  
+  void textf(PVideoFrame& dst, unsigned int& line, const char* fmt, ...);
 };
 
 

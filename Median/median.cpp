@@ -142,17 +142,17 @@ PVideoFrame __stdcall Median::GetFrame(int n, IScriptEnvironment* env)
   // Print debug information on output image
   if (debug)
   {
-    line = 0;
-    textf(output, "FRAME: %d", n);
-    textf(output, "CLIPS: %d", depth);
+    unsigned int line = 0;
+    textf(output, line, "FRAME: %d", n);
+    textf(output, line, "CLIPS: %d", depth);
 
     if (sync > 0)
     {
-      textf(output, "SYNC RADIUS: %d", sync);
-      textf(output, "SYNC METRICS:");
+      textf(output, line, "SYNC RADIUS: %d", sync);
+      textf(output, line, "SYNC METRICS:");
 
       for (unsigned int i = 1; i < depth; i++)
-        textf(output, "%-2d %+-3d %-f", i + 1, match[i], best[i]);
+        textf(output, line, "%-2d %+-3d %-f", i + 1, match[i], best[i]);
     }
   }
 
@@ -488,11 +488,9 @@ void Median::debugf(const char* fmt, ...)
 //////////////////////////////////////////////////////////////////////////////
 // Print things on top of image
 //////////////////////////////////////////////////////////////////////////////
-void Median::textf(PVideoFrame& dst, const char* fmt, ...)
+void Median::textf(PVideoFrame& dst, unsigned int& line, const char* fmt, ...)
 {
   char string[1024] = { 0 };
-
-  int n = info[0].width / FONT_WIDTH;
 
   va_list args;
   va_start(args, fmt);
@@ -502,8 +500,9 @@ void Median::textf(PVideoFrame& dst, const char* fmt, ...)
   if (info[0].IsYUY2()) print_yuyv(dst, line, string);
   else if (info[0].IsRGB24()) print_rgb(dst, line, string, false, 1);
   else if (info[0].IsRGB32()) print_rgb(dst, line, string, true, 1);
-  else if (info[0].pixel_type == VideoInfo::CS_BGR64) print_rgb(dst, line, string, true, 2);
-  else if (info[0].IsPlanar()) print_planar(dst, line, string, info[0].ComponentSize());
+  else if (info[0].IsRGB48()) print_rgb(dst, line, string, false, 2);
+  else if (info[0].IsRGB64()) print_rgb(dst, line, string, true, 2);
+  else if (info[0].IsPlanar()) print_planar(dst, line, string, info[0].ComponentSize(), (1 << info[0].BitsPerComponent()) - 1);
 
   line++;
 }
