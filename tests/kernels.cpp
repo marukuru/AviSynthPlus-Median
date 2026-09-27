@@ -1,4 +1,5 @@
 #include "kernels.h"
+#include "cpu_flags.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -9,10 +10,11 @@
 
 namespace {
 template<typename T>
-void check(int depth, int components, int low, int high, bool shifted, bool copy)
+void check(int depth, int components, int low, int high, bool shifted, bool copy, int opt, int pixels)
 {
   median::PlaneJob job{};
-  job.width = 71 * components;
+  job.width = pixels * components;
+  job.kernel = median::select_kernel(host_cpu_flags(), sizeof(T), opt);
   job.height = 7;
   job.component_size = sizeof(T);
   job.components = components;
@@ -42,7 +44,7 @@ void check(int depth, int components, int low, int high, bool shifted, bool copy
     for (int x = 0; x < job.width; ++x) {
       std::vector<double> values;
       for (int i = 0; i < depth; ++i) {
-        const int sx = std::clamp(x / components - job.dx[i], 0, 70) * components + x % components;
+        const int sx = std::clamp(x / components - job.dx[i], 0, pixels - 1) * components + x % components;
         const int sy = std::clamp(y - job.dy[i], 0, job.height - 1);
         values.push_back(source[i][sy * (job.src_pitch[i] / sizeof(T)) + sx]);
       }
@@ -67,6 +69,17 @@ void check(int depth, int components, int low, int high, bool shifted, bool copy
 int main()
 {
   try {
+    if (median::supports_opt(0, 2) || median::supports_opt(CPUF_AVX512F, 8) || median::supports_opt(CPUF_AVX2, 6))
+      throw std::runtime_error("CPU dispatch accepted incomplete capabilities");
+#ifdef MEDIAN_ENABLE_SIMD
+    const int avx512 = CPUF_SSE2 | CPUF_SSE4_1 | CPUF_AVX | CPUF_AVX2 | CPUF_FMA3 | CPUF_AVX512F | CPUF_AVX512DQ | CPUF_AVX512BW | CPUF_AVX512VL;
+    if (!median::supports_opt(avx512, 8)) throw std::runtime_error("AVX512 dispatch unavailable");
+    for (int bit : {CPUF_SSE2, CPUF_SSE4_1, CPUF_AVX, CPUF_AVX2, CPUF_FMA3, CPUF_AVX512F, CPUF_AVX512DQ, CPUF_AVX512BW, CPUF_AVX512VL})
+      if (median::supports_opt(avx512 & ~bit, 8)) throw std::runtime_error("AVX512 prerequisite not checked");
+#endif
+    for (int opt = 0; opt <= 8; ++opt) {
+      if (!median::supports_opt(host_cpu_flags(), opt)) continue;
+      for (int pixels : {1, 15, 32, 71})
     for (int depth : {3, 4, 5, 7, 9, 13, 25})
       for (int components : {1, 2, 3, 4})
         for (bool shifted : {false, true})
@@ -74,10 +87,11 @@ int main()
             for (int mode = 0; mode < 3; ++mode) {
               int low = mode == 0 ? (depth - 1) / 2 : mode == 1 ? 1 : 0;
               int high = mode == 0 ? depth / 2 : mode == 1 ? 1 : 0;
-              check<uint8_t>(depth, components, low, high, shifted, copy);
-              check<uint16_t>(depth, components, low, high, shifted, copy);
-              check<float>(depth, components, low, high, shifted, copy);
+              check<uint8_t>(depth, components, low, high, shifted, copy, opt, pixels);
+              check<uint16_t>(depth, components, low, high, shifted, copy, opt, pixels);
+              check<float>(depth, components, low, high, shifted, copy, opt, pixels);
             }
+    }
     std::cout << "Kernel references, shifts, strides, tails and guards passed\n";
   } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

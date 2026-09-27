@@ -17,9 +17,12 @@
 //////////////////////////////////////////////////////////////////////////////
 // Constructor
 //////////////////////////////////////////////////////////////////////////////
-Median::Median(PClip _child, std::vector<PClip> _clips, unsigned int _low, unsigned int _high, bool _temporal, bool _processchroma, unsigned int _sync, unsigned int _syncx, unsigned int _syncy, unsigned int _samples, unsigned int _ignoret, unsigned int _ignoreb, unsigned int _ignorel, unsigned int _ignorer, bool _debug, unsigned int _threads, IScriptEnvironment* env) :
+Median::Median(PClip _child, std::vector<PClip> _clips, unsigned int _low, unsigned int _high, bool _temporal, bool _processchroma, unsigned int _sync, unsigned int _syncx, unsigned int _syncy, unsigned int _samples, unsigned int _ignoret, unsigned int _ignoreb, unsigned int _ignorel, unsigned int _ignorer, bool _debug, unsigned int _threads, int opt, IScriptEnvironment* env) :
   GenericVideoFilter(_child), clips(_clips), low(_low), high(_high), temporal(_temporal), processchroma(_processchroma), sync(_sync), syncx(_syncx), syncy(_syncy), samples(_samples), ignoret(_ignoret), ignoreb(_ignoreb), ignorel(_ignorel), ignorer(_ignorer), debug(_debug), threads(_threads)
 {
+  if (!median::supports_opt(env->GetCPUFlags(), opt))
+    env->ThrowError(ERROR_PREFIX "Requested opt mode is unavailable in this build or on this CPU/OS.");
+  row_kernel = median::select_kernel(env->GetCPUFlags(), vi.ComponentSize(), opt);
   // Check frame property support
   has_at_least_v8 = true;
   try { env->CheckVersion(8); }
@@ -200,30 +203,29 @@ double Median::CompareFrames(int plane, PVideoFrame a, PVideoFrame b, unsigned i
 
   int overlap_width = end_x - start_x;
   int overlap_height = end_y - start_y;
-  unsigned int overlap_length = overlap_width * overlap_height;
+  const uint64_t overlap_length = static_cast<uint64_t>(overlap_width) * overlap_height;
 
-  if (points < 1 || points > overlap_length) points = overlap_length;
-  const unsigned int step = overlap_length / points;
+  const uint64_t sample_count = points < 1 ? overlap_length : std::min<uint64_t>(points, overlap_length);
+  const uint64_t step = overlap_length / sample_count;
 
   double difference = 0.0;
   
   if (cs == 1) {
     const uint8_t* aptr = (const uint8_t*)a->GetReadPtr(plane);
     const uint8_t* bptr = (const uint8_t*)b->GetReadPtr(plane);
-    unsigned long sum = 0;
-    unsigned int sampled = 0;
-    unsigned int count = 0;
+    uint64_t sum = 0;
+    uint64_t sampled = 0;
+    uint64_t next = 0;
     for (int y = start_y; y < end_y; ++y) {
       const uint8_t* row_a = aptr + y * pitch_a;
       const uint8_t* row_b = bptr + (y - dy) * pitch_b;
-      for (int x = start_x; x < end_x; ++x) {
-        if (count == 0) {
-          sum += abs((int)row_a[x] - (int)row_b[x - dx]);
-          sampled++;
-          count = step;
-        }
-        count--;
+      // Jump directly between samples while retaining the original flattened grid.
+      for (; next < static_cast<uint64_t>(overlap_width); next += step) {
+        const int x = start_x + static_cast<int>(next);
+        sum += abs((int)row_a[x] - (int)row_b[x - dx]);
+        ++sampled;
       }
+      next -= overlap_width;
     }
     double max_val = (info[0].ComponentSize() == 4 ? 1 : (1 << info[0].BitsPerComponent()) - 1);
     difference = (100.0 * sum) / (max_val * (sampled > 0 ? sampled : 1));
@@ -231,19 +233,18 @@ double Median::CompareFrames(int plane, PVideoFrame a, PVideoFrame b, unsigned i
     const uint16_t* aptr = (const uint16_t*)a->GetReadPtr(plane);
     const uint16_t* bptr = (const uint16_t*)b->GetReadPtr(plane);
     unsigned long long sum = 0;
-    unsigned int sampled = 0;
-    unsigned int count = 0;
+    uint64_t sampled = 0;
+    uint64_t next = 0;
     for (int y = start_y; y < end_y; ++y) {
       const uint16_t* row_a = aptr + y * pitch_a;
       const uint16_t* row_b = bptr + (y - dy) * pitch_b;
-      for (int x = start_x; x < end_x; ++x) {
-        if (count == 0) {
-          sum += abs((int)row_a[x] - (int)row_b[x - dx]);
-          sampled++;
-          count = step;
-        }
-        count--;
+      // Jump directly between samples while retaining the original flattened grid.
+      for (; next < static_cast<uint64_t>(overlap_width); next += step) {
+        const int x = start_x + static_cast<int>(next);
+        sum += abs((int)row_a[x] - (int)row_b[x - dx]);
+        ++sampled;
       }
+      next -= overlap_width;
     }
     double max_val = (info[0].ComponentSize() == 4 ? 1 : (1 << info[0].BitsPerComponent()) - 1);
     difference = (100.0 * sum) / (max_val * (sampled > 0 ? sampled : 1));
@@ -251,19 +252,18 @@ double Median::CompareFrames(int plane, PVideoFrame a, PVideoFrame b, unsigned i
     const float* aptr = (const float*)a->GetReadPtr(plane);
     const float* bptr = (const float*)b->GetReadPtr(plane);
     double sum = 0.0;
-    unsigned int sampled = 0;
-    unsigned int count = 0;
+    uint64_t sampled = 0;
+    uint64_t next = 0;
     for (int y = start_y; y < end_y; ++y) {
       const float* row_a = aptr + y * pitch_a;
       const float* row_b = bptr + (y - dy) * pitch_b;
-      for (int x = start_x; x < end_x; ++x) {
-        if (count == 0) {
-          sum += std::abs(row_a[x] - row_b[x - dx]);
-          sampled++;
-          count = step;
-        }
-        count--;
+      // Jump directly between samples while retaining the original flattened grid.
+      for (; next < static_cast<uint64_t>(overlap_width); next += step) {
+        const int x = start_x + static_cast<int>(next);
+        sum += std::abs(row_a[x] - row_b[x - dx]);
+        ++sampled;
       }
+      next -= overlap_width;
     }
     difference = (100.0 * sum) / (1.0 * (sampled > 0 ? sampled : 1));
   }
@@ -323,6 +323,7 @@ void Median::ProcessFrame(PVideoFrame src[MAX_DEPTH], PVideoFrame& dst,
     job.component_size = vi.ComponentSize();
     job.components = planar ? 1 : (vi.IsYUY2() ? 2 : vi.NumComponents());
     job.copy_every = !planar && !processchroma ? (vi.IsYUY2() ? 2 : (job.components == 4 ? 4 : 0)) : 0;
+    job.kernel = row_kernel;
     job.depth = depth;
     job.low = low;
     job.high = high;

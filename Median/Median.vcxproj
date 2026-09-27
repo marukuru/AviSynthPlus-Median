@@ -87,7 +87,7 @@
       </PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;AJKMEDIAN_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>MEDIAN_ENABLE_SIMD=1;WIN32;_DEBUG;_WINDOWS;_USRDLL;AJKMEDIAN_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -101,7 +101,7 @@
       </PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;AJKMEDIAN_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>MEDIAN_ENABLE_SIMD=1;WIN32;_DEBUG;_WINDOWS;_USRDLL;AJKMEDIAN_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -117,7 +117,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;AJKMEDIAN_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>MEDIAN_ENABLE_SIMD=1;WIN32;NDEBUG;_WINDOWS;_USRDLL;AJKMEDIAN_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <ObjectFileName>$(IntDir)/%(RelativeDir)/</ObjectFileName>
       <AdditionalIncludeDirectories>.;./avs;</AdditionalIncludeDirectories>
@@ -139,7 +139,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;AJKMEDIAN_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>MEDIAN_ENABLE_SIMD=1;WIN32;NDEBUG;_WINDOWS;_USRDLL;AJKMEDIAN_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <ObjectFileName>$(IntDir)/%(RelativeDir)/</ObjectFileName>
       <AdditionalIncludeDirectories>.;./avs;</AdditionalIncludeDirectories>
@@ -155,6 +155,13 @@
   <ItemGroup>
     <ClCompile Include="filter.cpp" />
     <ClCompile Include="kernels.cpp" />
+    <ClCompile Include="simd_sse2.cpp"></ClCompile>
+    <ClCompile Include="simd_sse41.cpp"></ClCompile>
+    <ClCompile Include="simd_avx.cpp"><EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet></ClCompile>
+    <ClCompile Include="simd_avx2.cpp"><EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet></ClCompile>
+    <ClCompile Include="simd_avx512.cpp"><EnableEnhancedInstructionSet>AdvancedVectorExtensions512</EnableEnhancedInstructionSet></ClCompile>
+    <ClCompile Include="simd_fma3.cpp"><EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet></ClCompile>
+    <ClCompile Include="simd_fma4.cpp"><EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet></ClCompile>
     <ClCompile Include="median.cpp" />
     <ClCompile Include="print.cpp" />
   </ItemGroup>
@@ -169,6 +176,9 @@
     <ClInclude Include="avs\win.h" />
     <ClInclude Include="font.h" />
     <ClInclude Include="kernels.h" />
+    <ClInclude Include="simd.h" />
+    <ClInclude Include="simd_common.h" />
+    <ClInclude Include="simd_blend.h" />
     <ClInclude Include="median.h" />
     <ClInclude Include="opt_med.h" />
     <ClInclude Include="print.h" />

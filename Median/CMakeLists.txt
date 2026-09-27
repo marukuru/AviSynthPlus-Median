@@ -51,62 +51,8 @@ foreach(FILE ${Median_Sources})
   source_group("${GROUP}" FILES "${FILE}")
 endforeach()
 
-if (MSVC_IDE)
-  IF(CLANG_IN_VS STREQUAL "1")
-      # special SSSE3 option for source files with *_ssse3.cpp pattern
-      file(GLOB_RECURSE SRCS_SSSE3 "*_ssse3.cpp")
-      set_source_files_properties(${SRCS_SSSE3} PROPERTIES COMPILE_FLAGS " -mssse3 ")
-
-      # special SSE4.1 option for source files with *_sse41.cpp pattern
-      file(GLOB_RECURSE SRCS_SSE41 "*_sse41.cpp")
-      set_source_files_properties(${SRCS_SSE41} PROPERTIES COMPILE_FLAGS " -msse4.1 ")
-
-      # special AVX option for source files with *_avx.cpp pattern
-      file(GLOB_RECURSE SRCS_AVX "*_avx.cpp")
-      set_source_files_properties(${SRCS_AVX} PROPERTIES COMPILE_FLAGS " -mavx ")
-
-      # special AVX2 option for source files with *_avx2.cpp pattern
-      file(GLOB_RECURSE SRCS_AVX2 "*_avx2.cpp")
-      set_source_files_properties(${SRCS_AVX2} PROPERTIES COMPILE_FLAGS " -mavx2 -mfma ")
-
-      # special AVX512 option for source files with *_avx512.cpp pattern
-      file(GLOB_RECURSE SRCS_AVX512 "*_avx512.cpp")
-      set_source_files_properties(${SRCS_AVX512} PROPERTIES COMPILE_FLAGS " -mavx512f -mavx512bw ")
-  ELSE()
-      # special AVX option for source files with *_avx.cpp pattern
-      file(GLOB_RECURSE SRCS_AVX "*_avx.cpp")
-      set_source_files_properties(${SRCS_AVX} PROPERTIES COMPILE_FLAGS " /arch:AVX ")
-
-      # special AVX2 option for source files with *_avx2.cpp pattern
-      file(GLOB_RECURSE SRCS_AVX2 "*_avx2.cpp")
-      set_source_files_properties(${SRCS_AVX2} PROPERTIES COMPILE_FLAGS " /arch:AVX2 ")
-
-      # special AVX512 option for source files with *_avx512.cpp pattern
-      file(GLOB_RECURSE SRCS_AVX512 "*_avx512.cpp")
-      set_source_files_properties(${SRCS_AVX512} PROPERTIES COMPILE_FLAGS " /arch:AVX512 ")
-  ENDIF()
-else()
-  # special SSSE3 option for source files with *_ssse3.cpp pattern
-  file(GLOB_RECURSE SRCS_SSSE3 "*_ssse3.cpp")
-  set_source_files_properties(${SRCS_SSSE3} PROPERTIES COMPILE_FLAGS " -mssse3 ")
-
-  # special SSE4.1 option for source files with *_sse41.cpp pattern
-  file(GLOB_RECURSE SRCS_SSE41 "*_sse41.cpp")
-  set_source_files_properties(${SRCS_SSE41} PROPERTIES COMPILE_FLAGS " -msse4.1 ")
-
-  # special AVX option for source files with *_avx.cpp pattern
-  file(GLOB_RECURSE SRCS_AVX "*_avx.cpp")
-  set_source_files_properties(${SRCS_AVX} PROPERTIES COMPILE_FLAGS " -mavx ")
-
-  # special AVX2 option for source files with *_avx2.cpp pattern
-  file(GLOB_RECURSE SRCS_AVX2 "*_avx2.cpp")
-  set_source_files_properties(${SRCS_AVX2} PROPERTIES COMPILE_FLAGS " -mavx2 -mfma ")
-
-  # special AVX512 option for source files with *_avx512.cpp pattern
-  file(GLOB_RECURSE SRCS_AVX512 "*_avx512.cpp")
-  set_source_files_properties(${SRCS_AVX512} PROPERTIES COMPILE_FLAGS " -mavx512f -mavx512bw ")
-endif()
-
+include(Cpu.cmake)
+median_configure_cpu(${PluginName})
 
 # Specify include directories
 target_include_directories(${ProjectName} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

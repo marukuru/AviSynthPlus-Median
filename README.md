@@ -23,7 +23,7 @@ The plugin provides three functions: `Median`, `TemporalMedian`, and `MedianBlen
 ### `Median`
 Calculates a pixel-by-pixel median across multiple input clips.
 ```avisynth
-Median(clip1, clip2, clip3, ..., bool chroma=true, int sync=0, int syncx=0, int syncy=0, int ignore_t=0, int ignore_b=0, int ignore_l=0, int ignore_r=0, int samples=4096, bool debug=false, int threads=1)
+Median(clip1, clip2, clip3, ..., bool chroma=true, int sync=0, int syncx=0, int syncy=0, int ignore_t=0, int ignore_b=0, int ignore_l=0, int ignore_r=0, int samples=4096, bool debug=false, int threads=1, int opt=0)
 ```
 
 - **clip1, clip2, ...**: Requires an odd number of clips between 3 and 25. All clips must have the same format and dimensions.
@@ -37,6 +37,7 @@ Median(clip1, clip2, clip3, ..., bool chroma=true, int sync=0, int syncx=0, int 
 - **ignore_r**: Number of pixels to exclude from the right edge when comparing frames for sync (default 0).
 - **samples**: Number of points to sample for sync calculations.
 - **debug**: Set to `true` to print debug information on the output frames.
+- **opt**: CPU kernel selection (default `0`, automatic). See the table below.
 - **threads**: Maximum workers for within-frame processing using AviSynth+'s native thread pool. `0` uses the pool size; `1` disables within-frame parallelism (default). Negative values are rejected.
 
 Spatial sync can be used with `sync=0` to align corresponding frames, or combined with temporal sync. The selected offsets are applied before calculating the median. Use non-negative values for the search radii and border exclusions. Border exclusions are measured in input-frame pixels and affect only sync comparisons; they do not crop the output. They have no effect when `sync`, `syncx`, and `syncy` are all 0.
@@ -50,24 +51,45 @@ Median(clip1, clip2, clip3, sync=1, syncx=2, syncy=2, ignore_b=16)
 ### `TemporalMedian`
 Applies a temporal median filter on a single clip.
 ```avisynth
-TemporalMedian(clip, int radius=1, bool chroma=true, bool debug=false, int threads=1)
+TemporalMedian(clip, int radius=1, bool chroma=true, bool debug=false, int threads=1, int opt=0)
 ```
 - **clip**: The input clip.
 - **radius**: Temporal radius (1 to 12, default 1).
 - **chroma**: Process chroma.
 - **debug**: Enable debug output.
+- **opt**: Same CPU kernel selection as `Median` (default `0`).
 - **threads**: Same native thread-pool control as `Median` (default 1).
 
 ### `MedianBlend`
 A more configurable median function that allows dropping the highest and lowest extremes and blending the rest.
 ```avisynth
-MedianBlend(clip1, clip2, clip3, ..., int low=1, int high=1, bool chroma=true, int sync=0, int syncx=0, int syncy=0, int ignore_t=0, int ignore_b=0, int ignore_l=0, int ignore_r=0, int samples=4096, bool debug=false, int threads=1)
+MedianBlend(clip1, clip2, clip3, ..., int low=1, int high=1, bool chroma=true, int sync=0, int syncx=0, int syncy=0, int ignore_t=0, int ignore_b=0, int ignore_l=0, int ignore_r=0, int samples=4096, bool debug=false, int threads=1, int opt=0)
 ```
 
 - **clip1, clip2, ...**: Requires between 3 and 25 clips.
 - **low**: Number of lowest pixel values to discard.
 - **high**: Number of highest pixel values to discard.
 - *(Remaining parameters, including spatial sync and border exclusions, are the same as `Median`.)*
+
+## CPU acceleration
+
+The plugin checks AviSynth+'s CPU/OS feature flags at runtime. The default is portable across machines; only the selected kernels use advanced instructions. Explicit unavailable modes produce an error.
+
+| `opt` | Kernels | Required CPU/OS features |
+| --- | --- | --- |
+| 0 | Automatic: 8, 6, 7, 5, 4, 3, 2, then 1 | None beyond the build target |
+| 1 | C++ reference | None beyond the build target |
+| 2 | SSE2 | SSE2 |
+| 3 | SSE4.1 | SSE2, SSE4.1 |
+| 4 | AVX | SSE2, SSE4.1, AVX with OS support |
+| 5 | AVX2 | SSE2, SSE4.1, AVX with OS support, AVX2 |
+| 6 | FMA3 | AVX2 requirements plus FMA3 |
+| 7 | FMA4 | AVX2 requirements plus FMA4 |
+| 8 | AVX512 | AVX2 requirements, FMA3, AVX512F/DQ/BW/VL with OS support |
+
+SIMD accelerates median selection for 8-bit, 10–16-bit, and float samples, including shifted rows and packed formats. SSE4.1 improves 16-bit min/max; AVX widens float processing; AVX2 widens integer processing; AVX512 processes 64 bytes, 32 words, or 16 floats per vector. Each mode uses the appropriate narrower kernel for formats that do not benefit from its extra instructions. FMA3/FMA4 modes also vectorize float `MedianBlend` averaging with double-precision accumulation and FMA-refined reciprocal division; last-bit float rounding can differ from `opt=1`. Integer averaging uses the C++ path. Unaligned rows and incomplete vector tails are supported.
+
+FMA3/FMA4 modes reuse AVX2/AVX for median selection, where fused arithmetic is not needed. MMX2, SSSE3, SSE4.2, and BMI2 do not add useful operations to these comparison networks and have no separate modes. `ENABLE_INTEL_SIMD=OFF` builds the portable C++ path only (`opt=0` or `1`).
 
 ## Multithreading
 
@@ -178,5 +200,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMEDIAN_BUILD_TESTS=ON
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
+
+Run `build/tests/median_benchmark` for a 1080p kernel-only comparison of `opt=1` and `opt=0` (excludes decoding, sync search, frame scheduling, and I/O).
 
 Tests compare integer and float output with independent pixel references and cover packed/planar formats, alpha, chroma bypass, different strides, shifted edges, temporal boundaries, native worker jobs, and concurrent `Prefetch` requests.

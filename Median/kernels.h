@@ -6,6 +6,10 @@
 
 namespace median {
 constexpr int max_depth = 25;
+using RowKernel = int (*)(const uint8_t* const*, uint8_t*, int, int, int, int);
+bool supports_opt(int cpu_flags, int opt);
+RowKernel select_kernel(int cpu_flags, int component_size, int opt = 0);
+
 struct PlaneJob {
   const uint8_t* src[max_depth];
   std::ptrdiff_t src_pitch[max_depth];
@@ -16,6 +20,7 @@ struct PlaneJob {
   int copy_every; // Copy every Nth component from clip 0 when chroma=false.
   int depth, low, high;
   int start_y, end_y;
+  RowKernel kernel;
 };
 void process_plane(const PlaneJob& job);
 }

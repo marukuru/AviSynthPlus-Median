@@ -109,7 +109,7 @@ static void run(IScriptEnvironment* env, const char* plugin)
     }
     for (bool chroma : {true, false}) {
       for (int threads : {1, 0, 999}) {
-        std::string options = ",chroma=" + std::string(chroma ? "true" : "false") + ",threads=" + std::to_string(threads);
+        std::string options = ",opt=" + std::string(threads == 1 ? "1" : "0") + ",chroma=" + std::string(chroma ? "true" : "false") + ",threads=" + std::to_string(threads);
         std::string suffix = threads == 0 ? ".Prefetch(4)" : "";
         verify(env, eval(env, "Median(c0,c1,c2,c3,c4" + options + ")" + suffix), clips, 2, 2, chroma, false);
         verify(env, eval(env, "MedianBlend(c0,c1,c2,c3,c4,low=1,high=2" + options + ")" + suffix), clips, 1, 2, chroma, false);

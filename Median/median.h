@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <stdint.h>
+#include "kernels.h"
 
 #define ERROR_PREFIX "Median: "
 
@@ -16,7 +17,7 @@ const unsigned int MAX_OPT = 9;
 class Median : public GenericVideoFilter
 {
 public:
-  Median(PClip _child, std::vector<PClip> _clips, unsigned int _low, unsigned int _high, bool _temporal, bool _processchroma, unsigned int _sync, unsigned int _syncx, unsigned int _syncy, unsigned int _samples, unsigned int _ignoret, unsigned int _ignoreb, unsigned int _ignorel, unsigned int _ignorer, bool _debug, unsigned int _threads, IScriptEnvironment* env);
+  Median(PClip _child, std::vector<PClip> _clips, unsigned int _low, unsigned int _high, bool _temporal, bool _processchroma, unsigned int _sync, unsigned int _syncx, unsigned int _syncy, unsigned int _samples, unsigned int _ignoret, unsigned int _ignoreb, unsigned int _ignorel, unsigned int _ignorer, bool _debug, unsigned int _threads, int opt, IScriptEnvironment* env);
   ~Median();
 
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;
@@ -40,6 +41,7 @@ public:
   unsigned int ignorer;
   bool debug;
   unsigned int threads;
+  median::RowKernel row_kernel;
 
   unsigned int depth;
   unsigned int blend;
