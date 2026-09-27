@@ -17,7 +17,7 @@
 //////////////////////////////////////////////////////////////////////////////
 // Constructor
 //////////////////////////////////////////////////////////////////////////////
-Median::Median(PClip _child, std::vector<PClip> _clips, unsigned int _low, unsigned int _high, bool _temporal, bool _processchroma, unsigned int _sync, unsigned int _syncx, unsigned int _syncy, unsigned int _samples, unsigned int _ignoret, unsigned int _ignoreb, unsigned int _ignorel, unsigned int _ignorer, bool _debug, unsigned int _threads, int opt, IScriptEnvironment* env) :
+Median::Median(PClip _child, std::vector<PClip> _clips, unsigned int _low, unsigned int _high, bool _temporal, bool _processchroma, unsigned int _sync, unsigned int _syncx, unsigned int _syncy, unsigned int _samples, unsigned int _ignoret, unsigned int _ignoreb, unsigned int _ignorel, unsigned int _ignorer, bool _debug, unsigned int _threads, int opt, bool use_opencl, IScriptEnvironment* env) :
   GenericVideoFilter(_child), clips(_clips), low(_low), high(_high), temporal(_temporal), processchroma(_processchroma), sync(_sync), syncx(_syncx), syncy(_syncy), samples(_samples), ignoret(_ignoret), ignoreb(_ignoreb), ignorel(_ignorel), ignorer(_ignorer), debug(_debug), threads(_threads)
 {
   if (!median::supports_opt(env->GetCPUFlags(), opt))
@@ -34,6 +34,10 @@ Median::Median(PClip _child, std::vector<PClip> _clips, unsigned int _low, unsig
     depth = (int)clips.size();
 
   blend = depth - low - high;
+  if (use_opencl) {
+    try { opencl.reset(new median::OpenCLProcessor(vi.ComponentSize(), depth, low, high)); }
+    catch (const std::exception& e) { env->ThrowError(ERROR_PREFIX "%s", e.what()); }
+  }
 
   if (blend == 1 && low == high && depth <= MAX_OPT)
     fastprocess = true;
@@ -333,6 +337,10 @@ void Median::ProcessFrame(PVideoFrame src[MAX_DEPTH], PVideoFrame& dst,
       // Scale signed offsets to the chroma plane's resolution (truncate toward zero).
       job.dx[i] = match_x[i] / (vi.width / (job.width / job.components));
       job.dy[i] = match_y[i] / (vi.height / job.height);
+    }
+    if (opencl) {
+      try { if (opencl->process(job)) continue; }
+      catch (const std::exception& e) { env->ThrowError(ERROR_PREFIX "%s", e.what()); }
     }
     const unsigned int count = std::min(workers, std::max(1U, static_cast<unsigned int>(job.height / 32)));
     for (unsigned int t = 0; t < count; ++t) {

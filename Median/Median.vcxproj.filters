@@ -23,6 +23,7 @@
     <ClCompile Include="simd_avx512.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="simd_fma3.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="simd_fma4.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="opencl.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="median.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -38,6 +39,7 @@
     <ClInclude Include="simd.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="simd_common.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="simd_blend.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="opencl.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="median.h">
       <Filter>Header Files</Filter>
     </ClInclude>

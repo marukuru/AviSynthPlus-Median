@@ -89,7 +89,7 @@ static void verify(IScriptEnvironment* env, PClip result, const std::vector<PCli
   }
 }
 
-static void run(IScriptEnvironment* env, const char* plugin)
+static void run(IScriptEnvironment* env, const char* plugin, bool gpu)
 {
   std::cout << "Loading " << plugin << std::endl;
   PNeoEnv neo(env);
@@ -108,8 +108,8 @@ static void run(IScriptEnvironment* env, const char* plugin)
       env->SetGlobalVar(env->SaveString(("c" + std::to_string(i)).c_str()), clip);
     }
     for (bool chroma : {true, false}) {
-      for (int threads : {1, 0, 999}) {
-        std::string options = ",opt=" + std::string(threads == 1 ? "1" : "0") + ",chroma=" + std::string(chroma ? "true" : "false") + ",threads=" + std::to_string(threads);
+      for (int threads : (gpu ? std::vector<int>{1, 0} : std::vector<int>{1, 0, 999})) {
+        std::string options = ",opencl=" + std::string(gpu ? "true" : "false") + ",opt=" + std::string(threads == 1 ? "1" : "0") + ",chroma=" + std::string(chroma ? "true" : "false") + ",threads=" + std::to_string(threads);
         std::string suffix = threads == 0 ? ".Prefetch(4)" : "";
         verify(env, eval(env, "Median(c0,c1,c2,c3,c4" + options + ")" + suffix), clips, 2, 2, chroma, false);
         verify(env, eval(env, "MedianBlend(c0,c1,c2,c3,c4,low=1,high=2" + options + ")" + suffix), clips, 1, 2, chroma, false);
@@ -122,7 +122,7 @@ static void run(IScriptEnvironment* env, const char* plugin)
     env->SetGlobalVar(env->SaveString(("s" + std::to_string(i)).c_str()), eval(env, "TestPattern(BlankClip(width=68,height=96,length=16,pixel_type=\"YUV420P10\"),seed=" + std::to_string(i) + ",shifted=true)"));
   const std::string script = "Median(s0,s1,s2,sync=1,syncx=2,syncy=2,samples=0,ignore_b=4,threads=";
   auto serial = eval(env, script + "1)");
-  auto parallel = eval(env, script + "0).Prefetch(4)");
+  auto parallel = eval(env, script + (gpu ? "0,opencl=true).Prefetch(4)" : "0).Prefetch(4)"));
   for (int n = 0; n < 16; ++n) {
     auto a = serial->GetFrame(n, env), b = parallel->GetFrame(n, env);
     for (int p : planes(serial->GetVideoInfo()))
@@ -134,18 +134,26 @@ static void run(IScriptEnvironment* env, const char* plugin)
     eval(env, "Median(c0,c1,c2,threads=-1)");
     throw std::runtime_error("Negative threads accepted");
   } catch (const AvisynthError&) {}
+#if !MEDIAN_TEST_HAS_OPENCL
+  try {
+    eval(env, "Median(c0,c1,c2,opencl=true)");
+    throw std::runtime_error("OpenCL request unexpectedly accepted by CPU-only build");
+  } catch (const AvisynthError& e) {
+    if (!std::strstr(e.msg, "not compiled")) throw;
+  }
+#endif
 }
 int main(int argc, char** argv)
 {
-  if (argc != 2) return 2;
+  if (argc != 2 && argc != 3) return 2;
   auto env = CreateScriptEnvironment(8);
   if (!env) return 2;
   AVS_linkage = env->GetAVSLinkage();
 
   int result = 0;
-  try { run(env, argv[1]); std::cout << "Native threading and pixel reference checks passed\n"; }
+  try { run(env, argv[1], argc == 3); std::cout << "Native threading and pixel reference checks passed\n"; }
   catch (const IScriptEnvironment::NotFound&) { std::cerr << "AviSynth function not found\n"; result = 1; }
-  catch (const AvisynthError& e) { std::cerr << e.msg << '\n'; result = 1; }
+  catch (const AvisynthError& e) { std::cerr << e.msg << '\n'; result = argc == 3 && (std::strstr(e.msg, "No OpenCL platform") || std::strstr(e.msg, "No available OpenCL")) ? 77 : 1; }
   catch (const std::exception& e) { std::cerr << e.what() << '\n'; result = 1; }
   env->DeleteScriptEnvironment();
   return result;

@@ -23,7 +23,7 @@ The plugin provides three functions: `Median`, `TemporalMedian`, and `MedianBlen
 ### `Median`
 Calculates a pixel-by-pixel median across multiple input clips.
 ```avisynth
-Median(clip1, clip2, clip3, ..., bool chroma=true, int sync=0, int syncx=0, int syncy=0, int ignore_t=0, int ignore_b=0, int ignore_l=0, int ignore_r=0, int samples=4096, bool debug=false, int threads=1, int opt=0)
+Median(clip1, clip2, clip3, ..., bool chroma=true, int sync=0, int syncx=0, int syncy=0, int ignore_t=0, int ignore_b=0, int ignore_l=0, int ignore_r=0, int samples=4096, bool debug=false, int threads=1, int opt=0, bool opencl=false)
 ```
 
 - **clip1, clip2, ...**: Requires an odd number of clips between 3 and 25. All clips must have the same format and dimensions.
@@ -37,6 +37,7 @@ Median(clip1, clip2, clip3, ..., bool chroma=true, int sync=0, int syncx=0, int 
 - **ignore_r**: Number of pixels to exclude from the right edge when comparing frames for sync (default 0).
 - **samples**: Number of points to sample for sync calculations.
 - **debug**: Set to `true` to print debug information on the output frames.
+- **opencl**: Opt in to GPU processing (default `false`); requires an OpenCL-enabled build. See below.
 - **opt**: CPU kernel selection (default `0`, automatic). See the table below.
 - **threads**: Maximum workers for within-frame processing using AviSynth+'s native thread pool. `0` uses the pool size; `1` disables within-frame parallelism (default). Negative values are rejected.
 
@@ -51,19 +52,20 @@ Median(clip1, clip2, clip3, sync=1, syncx=2, syncy=2, ignore_b=16)
 ### `TemporalMedian`
 Applies a temporal median filter on a single clip.
 ```avisynth
-TemporalMedian(clip, int radius=1, bool chroma=true, bool debug=false, int threads=1, int opt=0)
+TemporalMedian(clip, int radius=1, bool chroma=true, bool debug=false, int threads=1, int opt=0, bool opencl=false)
 ```
 - **clip**: The input clip.
 - **radius**: Temporal radius (1 to 12, default 1).
 - **chroma**: Process chroma.
 - **debug**: Enable debug output.
+- **opencl**: Same optional GPU backend as `Median` (default `false`).
 - **opt**: Same CPU kernel selection as `Median` (default `0`).
 - **threads**: Same native thread-pool control as `Median` (default 1).
 
 ### `MedianBlend`
 A more configurable median function that allows dropping the highest and lowest extremes and blending the rest.
 ```avisynth
-MedianBlend(clip1, clip2, clip3, ..., int low=1, int high=1, bool chroma=true, int sync=0, int syncx=0, int syncy=0, int ignore_t=0, int ignore_b=0, int ignore_l=0, int ignore_r=0, int samples=4096, bool debug=false, int threads=1, int opt=0)
+MedianBlend(clip1, clip2, clip3, ..., int low=1, int high=1, bool chroma=true, int sync=0, int syncx=0, int syncy=0, int ignore_t=0, int ignore_b=0, int ignore_l=0, int ignore_r=0, int samples=4096, bool debug=false, int threads=1, int opt=0, bool opencl=false)
 ```
 
 - **clip1, clip2, ...**: Requires between 3 and 25 clips.
@@ -101,6 +103,28 @@ Prefetch(4)
 ```
 
 Start with `threads=1` when using frame-level prefetch. For expensive individual frames, `threads=0` or a positive worker limit also enables row parallelism in the native AviSynth+ pool (3.6 or newer). Work is capped to the pool size and the number of useful row blocks. Older hosts without the extended environment use serial row processing.
+
+## Optional OpenCL
+
+OpenCL is disabled by default at build time and in scripts. To build it with CMake, install OpenCL development headers and the ICD loader (on Ubuntu/Debian: `ocl-icd-opencl-dev`) and a working GPU driver, then run:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMEDIAN_ENABLE_OPENCL=ON
+cmake --build build
+```
+
+For the Visual Studio solution, set MSBuild properties `MedianOpenCL=true`, `OpenCLIncludeDir` to the SDK include directory, and `OpenCLLibraryDir` to the directory containing the matching architecture's `OpenCL.lib`.
+
+Enable it per filter:
+
+```avisynth
+Median(clip1, clip2, clip3, opencl=true)
+Prefetch(4)
+```
+
+The backend selects the first available OpenCL 1.2 GPU with a compiler. It supports integer median/blending and float median selection, including packed formats, spatial shifts, and chroma bypass. Float averaging stays on the CPU to retain double-precision accumulation; float processing also falls back to the CPU if the device lacks denormal or infinity/NaN support. Sync searches remain on the CPU. `opt` and `threads` control CPU work; GPU dispatch is managed by OpenCL.
+
+Each filter reuses its device buffers and serializes GPU submissions, making concurrent `Prefetch` requests safe. Frame uploads and downloads add overhead, so benchmark your workload against the default CPU SIMD path. Missing build support, unavailable GPUs, allocation failures, and driver/build errors produce explicit errors when `opencl=true`.
 
 ## Change log
 

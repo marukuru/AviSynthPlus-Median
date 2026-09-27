@@ -54,6 +54,13 @@ endforeach()
 include(Cpu.cmake)
 median_configure_cpu(${PluginName})
 
+option(MEDIAN_ENABLE_OPENCL "Enable the optional OpenCL 1.2 GPU backend" OFF)
+if(MEDIAN_ENABLE_OPENCL)
+  find_package(OpenCL 1.2 REQUIRED)
+  target_compile_definitions(${PluginName} PRIVATE MEDIAN_ENABLE_OPENCL=1 CL_TARGET_OPENCL_VERSION=120)
+  target_link_libraries(${PluginName} OpenCL::OpenCL)
+endif()
+
 # Specify include directories
 target_include_directories(${ProjectName} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 #dedicated include dir for avisynth.h
