@@ -17,6 +17,8 @@ project(${ProjectName} LANGUAGES CXX)
 Include("Files.cmake")
 
 add_library(${PluginName} SHARED ${Median_Sources})
+# Keep the plugin linkage pointer and C++ internals separate from the host.
+set_target_properties(${PluginName} PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN YES)
 
 set(PLUGIN_VERSION "0.7")
 set_target_properties(${PluginName} PROPERTIES "OUTPUT_NAME" "${PluginName}.${PLUGIN_VERSION}")

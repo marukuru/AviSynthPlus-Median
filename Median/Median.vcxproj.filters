@@ -15,6 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="kernels.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="median.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -26,6 +27,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="kernels.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="median.h">
       <Filter>Header Files</Filter>
     </ClInclude>

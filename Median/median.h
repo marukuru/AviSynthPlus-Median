@@ -13,25 +13,14 @@ const unsigned int MAX_OPT = 9;
 // Class definition
 //////////////////////////////////////////////////////////////////////////////
 
-class Median;
-struct MedianJobData {
-  const Median* filter;
-  int plane;
-  PVideoFrame* src;
-  PVideoFrame* dst;
-  int start_y;
-  int end_y;
-  int component_size;
-  bool is_interleaved;
-};
-
 class Median : public GenericVideoFilter
 {
 public:
   Median(PClip _child, std::vector<PClip> _clips, unsigned int _low, unsigned int _high, bool _temporal, bool _processchroma, unsigned int _sync, unsigned int _syncx, unsigned int _syncy, unsigned int _samples, unsigned int _ignoret, unsigned int _ignoreb, unsigned int _ignorel, unsigned int _ignorer, bool _debug, unsigned int _threads, IScriptEnvironment* env);
   ~Median();
 
-  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;
+  int __stdcall SetCacheHints(int cachehints, int frame_range) override;
 
 public:
   bool has_at_least_v8; // passing frame property support
@@ -49,8 +38,6 @@ public:
   unsigned int ignoreb;
   unsigned int ignorel;
   unsigned int ignorer;
-  int match_x[MAX_DEPTH];
-  int match_y[MAX_DEPTH];
   bool debug;
   unsigned int threads;
 
@@ -63,17 +50,8 @@ public:
 
   double CompareFrames(int plane, PVideoFrame a, PVideoFrame b, unsigned int points, int dx, int dy);
   
-  template<typename T>
-  void ProcessPlane_T(int plane, PVideoFrame src[MAX_DEPTH], PVideoFrame& dst, IScriptEnvironment* env);
-  
-  void ProcessPlanarFrame(PVideoFrame src[MAX_DEPTH], PVideoFrame& dst, IScriptEnvironment* env);
-  void ProcessInterleavedFrame(PVideoFrame src[MAX_DEPTH], PVideoFrame& dst, IScriptEnvironment* env);
-  
-  template<typename T>
-  inline T ProcessPixel_T(T* values) const;
-  
-  inline unsigned char ProcessPixel(unsigned char* values) const;
-  inline uint16_t ProcessPixel_16bit(uint16_t* values) const;
+  void ProcessFrame(PVideoFrame src[MAX_DEPTH], PVideoFrame& dst,
+                    const int* match_x, const int* match_y, IScriptEnvironment* env);
 
   void debugf(const char* fmt, ...);
 
@@ -83,5 +61,3 @@ public:
 
 
 #endif // MEDIAN_H
-
-AVSValue __stdcall MedianWorker(IScriptEnvironment2* env, void* data);

@@ -1,3 +1,6 @@
+> [!NOTE]
+> **AI-assisted development: CODEX GPT-6 Astra Extra High**
+
 # Median
 An Avisynth Median Filter by ajk
 
@@ -34,7 +37,7 @@ Median(clip1, clip2, clip3, ..., bool chroma=true, int sync=0, int syncx=0, int 
 - **ignore_r**: Number of pixels to exclude from the right edge when comparing frames for sync (default 0).
 - **samples**: Number of points to sample for sync calculations.
 - **debug**: Set to `true` to print debug information on the output frames.
-- **threads**: Number of threads to use for parallel processing (default 1).
+- **threads**: Maximum workers for within-frame processing using AviSynth+'s native thread pool. `0` uses the pool size; `1` disables within-frame parallelism (default). Negative values are rejected.
 
 Spatial sync can be used with `sync=0` to align corresponding frames, or combined with temporal sync. The selected offsets are applied before calculating the median. Use non-negative values for the search radii and border exclusions. Border exclusions are measured in input-frame pixels and affect only sync comparisons; they do not crop the output. They have no effect when `sync`, `syncx`, and `syncy` are all 0.
 
@@ -53,7 +56,7 @@ TemporalMedian(clip, int radius=1, bool chroma=true, bool debug=false, int threa
 - **radius**: Temporal radius (1 to 12, default 1).
 - **chroma**: Process chroma.
 - **debug**: Enable debug output.
-- **threads**: Number of threads to use.
+- **threads**: Same native thread-pool control as `Median` (default 1).
 
 ### `MedianBlend`
 A more configurable median function that allows dropping the highest and lowest extremes and blending the rest.
@@ -65,6 +68,17 @@ MedianBlend(clip1, clip2, clip3, ..., int low=1, int high=1, bool chroma=true, i
 - **low**: Number of lowest pixel values to discard.
 - **high**: Number of highest pixel values to discard.
 - *(Remaining parameters, including spatial sync and border exclusions, are the same as `Median`.)*
+
+## Multithreading
+
+All three filters report `MT_NICE_FILTER` and keep frame-specific state local, so AviSynth+ can process multiple frames concurrently with [Prefetch](https://avisynthplus.readthedocs.io/en/3.7/avisynthdoc/syntax/syntax_internal_functions_multithreading_new.html). For example:
+
+```avisynth
+Median(clip1, clip2, clip3, threads=1)
+Prefetch(4)
+```
+
+Start with `threads=1` when using frame-level prefetch. For expensive individual frames, `threads=0` or a positive worker limit also enables row parallelism in the native AviSynth+ pool (3.6 or newer). Work is capped to the pool size and the number of useful row blocks. Older hosts without the extended environment use serial row processing.
 
 ## Change log
 
@@ -154,3 +168,15 @@ sudo apt install build-essential cmake git
         cd build
         sudo make install
 
+
+### Tests
+
+With the AviSynth+ runtime library installed:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMEDIAN_BUILD_TESTS=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+Tests compare integer and float output with independent pixel references and cover packed/planar formats, alpha, chroma bypass, different strides, shifted edges, temporal boundaries, native worker jobs, and concurrent `Prefetch` requests.

@@ -4,7 +4,8 @@
 #include "median.h"
 #include "opt_med.h"
 #include <vector>
-#include <thread>
+#include "kernels.h"
+#include <cstring>
 #include <algorithm>
 #include <stdint.h>
 #include <stdio.h>
@@ -17,12 +18,8 @@
 // Constructor
 //////////////////////////////////////////////////////////////////////////////
 Median::Median(PClip _child, std::vector<PClip> _clips, unsigned int _low, unsigned int _high, bool _temporal, bool _processchroma, unsigned int _sync, unsigned int _syncx, unsigned int _syncy, unsigned int _samples, unsigned int _ignoret, unsigned int _ignoreb, unsigned int _ignorel, unsigned int _ignorer, bool _debug, unsigned int _threads, IScriptEnvironment* env) :
-  GenericVideoFilter(_child), clips(_clips), low(_low), high(_high), temporal(_temporal), processchroma(_processchroma), sync(_sync), syncx(_syncx), syncy(_syncy), samples(_samples), ignoret(_ignoret), ignoreb(_ignoreb), ignorel(_ignorel), ignorer(_ignorer), debug(_debug), threads(std::max(1U, _threads))
+  GenericVideoFilter(_child), clips(_clips), low(_low), high(_high), temporal(_temporal), processchroma(_processchroma), sync(_sync), syncx(_syncx), syncy(_syncy), samples(_samples), ignoret(_ignoret), ignoreb(_ignoreb), ignorel(_ignorel), ignorer(_ignorer), debug(_debug), threads(_threads)
 {
-  for (int i = 0; i < MAX_DEPTH; ++i) {
-    match_x[i] = 0;
-    match_y[i] = 0;
-  }
   // Check frame property support
   has_at_least_v8 = true;
   try { env->CheckVersion(8); }
@@ -93,6 +90,8 @@ PVideoFrame __stdcall Median::GetFrame(int n, IScriptEnvironment* env)
   // Sync statistics for this frame
   double best[MAX_DEPTH] = { 0.0 };
   int match[MAX_DEPTH] = { 0 };
+  int match_x[MAX_DEPTH] = { 0 };
+  int match_y[MAX_DEPTH] = { 0 };
 
   // Source
   PVideoFrame src[MAX_DEPTH];
@@ -103,7 +102,7 @@ PVideoFrame __stdcall Median::GetFrame(int n, IScriptEnvironment* env)
 
     // TODO: Do I need to worry about negative frames or frames after the last? Looks like no
     for (unsigned int i = 0; i < depth; i++)
-      src[i] = clips[0]->GetFrame(n - radius + i, env); // Grab an equal number of preceding and following frames
+      src[i] = clips[0]->GetFrame(std::clamp(n - static_cast<int>(radius) + static_cast<int>(i), 0, vi.num_frames - 1), env); // Grab an equal number of preceding and following frames
   }
   else if (sync > 0 || syncx > 0 || syncy > 0)
   {
@@ -119,11 +118,12 @@ PVideoFrame __stdcall Median::GetFrame(int n, IScriptEnvironment* env)
 
       for (int j = -radius; j <= radius; j++)
       {
+        PVideoFrame candidate = clips[i]->GetFrame(std::clamp(n + j, 0, info[i].num_frames - 1), env);
         for (int dy = -ry; dy <= ry; dy++)
         {
           for (int dx = -rx; dx <= rx; dx++)
           {
-            double similarity = CompareFrames(PLANAR_Y, src[0], clips[i]->GetFrame(n + j, env), samples, dx, dy);
+            double similarity = CompareFrames(PLANAR_Y, src[0], candidate, samples, dx, dy);
             similarity -= abs(j) * 0.1;
 
             if (similarity > best[i])
@@ -137,7 +137,7 @@ PVideoFrame __stdcall Median::GetFrame(int n, IScriptEnvironment* env)
         }
       }
 
-      src[i] = clips[i]->GetFrame(n + match[i], env);
+      src[i] = clips[i]->GetFrame(std::clamp(n + match[i], 0, info[i].num_frames - 1), env);
     }
   }
   else
@@ -150,11 +150,7 @@ PVideoFrame __stdcall Median::GetFrame(int n, IScriptEnvironment* env)
   // w/ frame property copy source
   PVideoFrame output = has_at_least_v8 ? env->NewVideoFrameP(vi, temporal ? &src[low] : &src[0]) : env->NewVideoFrame(vi);
 
-  // Select between planar and interleaved processing
-  if (info[0].IsPlanar())
-    ProcessPlanarFrame(src, output, env);
-  else
-    ProcessInterleavedFrame(src, output, env);
+  ProcessFrame(src, output, match_x, match_y, env);
 
   // Print debug information on output image
   if (debug)
@@ -229,7 +225,7 @@ double Median::CompareFrames(int plane, PVideoFrame a, PVideoFrame b, unsigned i
         count--;
       }
     }
-    double max_val = (1 << info[0].BitsPerComponent()) - 1;
+    double max_val = (info[0].ComponentSize() == 4 ? 1 : (1 << info[0].BitsPerComponent()) - 1);
     difference = (100.0 * sum) / (max_val * (sampled > 0 ? sampled : 1));
   } else if (cs == 2) {
     const uint16_t* aptr = (const uint16_t*)a->GetReadPtr(plane);
@@ -249,7 +245,7 @@ double Median::CompareFrames(int plane, PVideoFrame a, PVideoFrame b, unsigned i
         count--;
       }
     }
-    double max_val = (1 << info[0].BitsPerComponent()) - 1;
+    double max_val = (info[0].ComponentSize() == 4 ? 1 : (1 << info[0].BitsPerComponent()) - 1);
     difference = (100.0 * sum) / (max_val * (sampled > 0 ? sampled : 1));
   } else if (cs == 4) {
     const float* aptr = (const float*)a->GetReadPtr(plane);
@@ -277,288 +273,90 @@ double Median::CompareFrames(int plane, PVideoFrame a, PVideoFrame b, unsigned i
 }
 
 
-//////////////////////////////////////////////////////////////////////////////
-// Image processing for planar images
-//////////////////////////////////////////////////////////////////////////////
-
-void Median::ProcessPlanarFrame(PVideoFrame src[MAX_DEPTH], PVideoFrame& dst, IScriptEnvironment* env)
+int __stdcall Median::SetCacheHints(int cachehints, int)
 {
-  int cs = info[0].ComponentSize();
-  if (cs == 1) {
-    ProcessPlane_T<uint8_t>(PLANAR_Y, src, dst, env);
-    if (!info[0].IsY()) {
-      ProcessPlane_T<uint8_t>(PLANAR_U, src, dst, env);
-      ProcessPlane_T<uint8_t>(PLANAR_V, src, dst, env);
-    }
-  } else if (cs == 2) {
-    ProcessPlane_T<uint16_t>(PLANAR_Y, src, dst, env);
-    if (!info[0].IsY()) {
-      ProcessPlane_T<uint16_t>(PLANAR_U, src, dst, env);
-      ProcessPlane_T<uint16_t>(PLANAR_V, src, dst, env);
-    }
-  } else if (cs == 4) {
-    ProcessPlane_T<float>(PLANAR_Y, src, dst, env);
-    if (!info[0].IsY()) {
-      ProcessPlane_T<float>(PLANAR_U, src, dst, env);
-      ProcessPlane_T<float>(PLANAR_V, src, dst, env);
-    }
-  }
+  return cachehints == CACHE_GET_MTMODE ? MT_NICE_FILTER : 0;
 }
 
-AVSValue __stdcall MedianWorker(IScriptEnvironment2* env, void* data) {
-  MedianJobData* job = (MedianJobData*)data;
-  
-  if (!job->is_interleaved) {
-    int plane = job->plane;
-    int cs = job->component_size;
-    const int width = job->src[0]->GetRowSize(plane) / cs;
-    const int pitch = job->src[0]->GetPitch(plane) / cs;
-    const int dst_pitch = job->dst[0]->GetPitch(plane) / cs;
-    
-    if (cs == 1) {
-      uint8_t* dstp = (uint8_t*)(job->dst[0]->GetWritePtr(plane)) + job->start_y * dst_pitch;
-      const uint8_t* read_ptrs[MAX_DEPTH];
-      for (unsigned int i = 0; i < job->filter->depth; i++) read_ptrs[i] = (const uint8_t*)(job->src[i]->GetReadPtr(plane));
-      
-      for (int y = job->start_y; y < job->end_y; ++y) {
-        for (int x = 0; x < width; ++x) {
-          uint8_t values[MAX_DEPTH];
-          for (unsigned int i = 0; i < job->filter->depth; i++) {
-            int cy = std::max(0, std::min(job->src[i]->GetHeight(plane) - 1, y - job->filter->match_y[i]));
-            int cx = std::max(0, std::min(width - 1, x - job->filter->match_x[i]));
-            values[i] = read_ptrs[i][cy * pitch + cx];
-          }
-          if (plane == PLANAR_Y || job->filter->processchroma) dstp[x] = job->filter->ProcessPixel(values);
-          else dstp[x] = values[0];
-        }
-        dstp += dst_pitch;
-      }
-    } else if (cs == 2) {
-      uint16_t* dstp = (uint16_t*)(job->dst[0]->GetWritePtr(plane)) + job->start_y * dst_pitch;
-      const uint16_t* read_ptrs[MAX_DEPTH];
-      for (unsigned int i = 0; i < job->filter->depth; i++) read_ptrs[i] = (const uint16_t*)(job->src[i]->GetReadPtr(plane));
-      
-      for (int y = job->start_y; y < job->end_y; ++y) {
-        for (int x = 0; x < width; ++x) {
-          uint16_t values[MAX_DEPTH];
-          for (unsigned int i = 0; i < job->filter->depth; i++) {
-            int cy = std::max(0, std::min(job->src[i]->GetHeight(plane) - 1, y - job->filter->match_y[i]));
-            int cx = std::max(0, std::min(width - 1, x - job->filter->match_x[i]));
-            values[i] = read_ptrs[i][cy * pitch + cx];
-          }
-          if (plane == PLANAR_Y || job->filter->processchroma) dstp[x] = job->filter->template ProcessPixel_T<uint16_t>(values);
-          else dstp[x] = values[0];
-        }
-        dstp += dst_pitch;
-      }
-    } else if (cs == 4) {
-      float* dstp = (float*)(job->dst[0]->GetWritePtr(plane)) + job->start_y * dst_pitch;
-      const float* read_ptrs[MAX_DEPTH];
-      for (unsigned int i = 0; i < job->filter->depth; i++) read_ptrs[i] = (const float*)(job->src[i]->GetReadPtr(plane));
-      
-      for (int y = job->start_y; y < job->end_y; ++y) {
-        for (int x = 0; x < width; ++x) {
-          float values[MAX_DEPTH];
-          for (unsigned int i = 0; i < job->filter->depth; i++) {
-            int cy = std::max(0, std::min(job->src[i]->GetHeight(plane) - 1, y - job->filter->match_y[i]));
-            int cx = std::max(0, std::min(width - 1, x - job->filter->match_x[i]));
-            values[i] = read_ptrs[i][cy * pitch + cx];
-          }
-          if (plane == PLANAR_Y || job->filter->processchroma) dstp[x] = job->filter->template ProcessPixel_T<float>(values);
-          else dstp[x] = values[0];
-        }
-        dstp += dst_pitch;
-      }
-    }
-  } else {
-    // Interleaved format (simplified to standard non-threaded for now, or you can thread it similarly)
-    // To thread interleaved, we need more logic. I will implement single threaded for interleaved for brevity.
-  }
-  
+namespace {
+AVSValue MedianWorker(IScriptEnvironment2*, void* data)
+{
+  median::process_plane(*static_cast<median::PlaneJob*>(data));
   return AVSValue();
 }
+}
 
-template<typename T>
-void Median::ProcessPlane_T(int plane, PVideoFrame src[MAX_DEPTH], PVideoFrame& dst, IScriptEnvironment* env)
+void Median::ProcessFrame(PVideoFrame src[MAX_DEPTH], PVideoFrame& dst,
+                          const int* match_x, const int* match_y, IScriptEnvironment* env)
 {
-  const int height = src[0]->GetHeight(plane);
-  
-  IScriptEnvironment2* env2 = nullptr;
-  try { env->CheckVersion(6); env2 = static_cast<IScriptEnvironment2*>(env); } catch (...) { }
+  // Get the actual extended interface, rather than downcasting a legacy environment.
+  PNeoEnv neo(env);
+  IScriptEnvironment2* env2 = !neo ? nullptr : static_cast<IScriptEnvironment2*>(neo);
+  unsigned int workers = 1;
+  if (env2 && threads != 1) {
+    const unsigned int pool = static_cast<unsigned int>(env->GetEnvProperty(AEP_THREADPOOL_THREADS));
+    workers = threads == 0 ? std::max(1U, pool) : std::max(1U, std::min(threads, pool));
+  }
 
-  if (env2 && threads > 1) {
-    IJobCompletion* completion = env2->NewCompletion(threads);
-    std::vector<MedianJobData> jobs(threads);
-    int chunk = height / threads;
-    for (unsigned int t = 0; t < threads; ++t) {
-      jobs[t].filter = this;
-      jobs[t].plane = plane;
-      jobs[t].src = src;
-      jobs[t].dst = &dst;
-      jobs[t].start_y = t * chunk;
-      jobs[t].end_y = (t == threads - 1) ? height : (t + 1) * chunk;
-      jobs[t].component_size = sizeof(T);
-      jobs[t].is_interleaved = false;
-      env2->ParallelJob(MedianWorker, &jobs[t], completion);
+  const bool planar = vi.IsPlanar();
+  const bool rgb = vi.IsRGB();
+  const int yuv_planes[] = { PLANAR_Y, PLANAR_U, PLANAR_V, PLANAR_A };
+  const int rgb_planes[] = { PLANAR_G, PLANAR_B, PLANAR_R, PLANAR_A };
+  const int* planes = rgb ? rgb_planes : yuv_planes;
+  const int plane_count = planar ? vi.NumComponents() : 1;
+  std::vector<median::PlaneJob> jobs;
+  for (int p = 0; p < plane_count; ++p) {
+    const int plane = planar ? planes[p] : 0;
+    const bool copy = planar && !processchroma && (p == 3 || (!rgb && p > 0));
+    // Acquire frame pointers only on the calling thread; jobs own raw, disjoint rows.
+    uint8_t* output = dst->GetWritePtr(plane);
+    if (copy) {
+      env->BitBlt(output, dst->GetPitch(plane), src[0]->GetReadPtr(plane),
+                  src[0]->GetPitch(plane), dst->GetRowSize(plane), dst->GetHeight(plane));
+      continue;
     }
+    median::PlaneJob job{};
+    job.dst = output;
+    job.dst_pitch = dst->GetPitch(plane);
+    job.width = dst->GetRowSize(plane) / vi.ComponentSize();
+    job.height = dst->GetHeight(plane);
+    job.component_size = vi.ComponentSize();
+    job.components = planar ? 1 : (vi.IsYUY2() ? 2 : vi.NumComponents());
+    job.copy_every = !planar && !processchroma ? (vi.IsYUY2() ? 2 : (job.components == 4 ? 4 : 0)) : 0;
+    job.depth = depth;
+    job.low = low;
+    job.high = high;
+    for (unsigned int i = 0; i < depth; ++i) {
+      job.src[i] = src[i]->GetReadPtr(plane);
+      job.src_pitch[i] = src[i]->GetPitch(plane);
+      // Scale signed offsets to the chroma plane's resolution (truncate toward zero).
+      job.dx[i] = match_x[i] / (vi.width / (job.width / job.components));
+      job.dy[i] = match_y[i] / (vi.height / job.height);
+    }
+    const unsigned int count = std::min(workers, std::max(1U, static_cast<unsigned int>(job.height / 32)));
+    for (unsigned int t = 0; t < count; ++t) {
+      job.start_y = static_cast<int>((static_cast<int64_t>(job.height) * t) / count);
+      job.end_y = static_cast<int>((static_cast<int64_t>(job.height) * (t + 1)) / count);
+      jobs.push_back(job);
+    }
+  }
+  if (workers == 1 || jobs.size() <= 1) {
+    for (const auto& job : jobs) median::process_plane(job);
+    return;
+  }
+  IJobCompletion* completion = env2->NewCompletion(jobs.size() - 1);
+  try {
+    for (size_t i = 0; i + 1 < jobs.size(); ++i)
+      env2->ParallelJob(MedianWorker, &jobs[i], completion);
+    median::process_plane(jobs.back());
+    completion->Wait();
+  } catch (...) {
+    // Never let submitted workers outlive their frame pointers or job descriptions.
     completion->Wait();
     completion->Destroy();
-  } else {
-    MedianJobData job;
-    job.filter = this;
-    job.plane = plane;
-    job.src = src;
-    job.dst = &dst;
-    job.start_y = 0;
-    job.end_y = height;
-    job.component_size = sizeof(T);
-    job.is_interleaved = false;
-    MedianWorker(nullptr, &job);
+    throw;
   }
-}
-
-void Median::ProcessInterleavedFrame(PVideoFrame src[MAX_DEPTH], PVideoFrame& dst, IScriptEnvironment* env)
-{
-  // Just keeping the old interleaved code, no threads for interleaved since we focus on planar bit-depth support
-  // The original interleaved processing logic:
-  const unsigned char* read_ptrs[MAX_DEPTH];
-  for (unsigned int i = 0; i < depth; i++) read_ptrs[i] = src[i]->GetReadPtr();
-  unsigned char* dstp = dst->GetWritePtr();
-  const int width = info[0].width;
-  const int height = info[0].height;
-
-  if (info[0].IsYUY2()) {
-    unsigned char luma[MAX_DEPTH];
-    unsigned char chroma[MAX_DEPTH];
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; x++) {
-        for (unsigned int i = 0; i < depth; i++) {
-          int cy = std::max(0, std::min(height - 1, y - match_y[i]));
-          int cx = std::max(0, std::min(width - 1, x - match_x[i]));
-          int pitch = src[i]->GetPitch();
-          luma[i] = read_ptrs[i][cy * pitch + cx * 2];
-          chroma[i] = read_ptrs[i][cy * pitch + cx * 2 + 1];
-        }
-        dstp[x * 2] = ProcessPixel(luma);
-        dstp[x * 2 + 1] = processchroma ? ProcessPixel(chroma) : chroma[0];
-      }
-      dstp += dst->GetPitch();
-    }
-  } else if (info[0].IsRGB24()) {
-    unsigned char b[MAX_DEPTH], g[MAX_DEPTH], r[MAX_DEPTH];
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; x++) {
-        for (unsigned int i = 0; i < depth; i++) {
-          int cy = std::max(0, std::min(height - 1, y - match_y[i]));
-          int cx = std::max(0, std::min(width - 1, x - match_x[i]));
-          int pitch = src[i]->GetPitch();
-          b[i] = read_ptrs[i][cy * pitch + cx * 3]; 
-          g[i] = read_ptrs[i][cy * pitch + cx * 3 + 1]; 
-          r[i] = read_ptrs[i][cy * pitch + cx * 3 + 2];
-        }
-        dstp[x * 3] = ProcessPixel(b); dstp[x * 3 + 1] = ProcessPixel(g); dstp[x * 3 + 2] = ProcessPixel(r);
-      }
-      dstp += dst->GetPitch();
-    }
-  } else if (info[0].IsRGB32()) {
-    unsigned char b[MAX_DEPTH], g[MAX_DEPTH], r[MAX_DEPTH], a[MAX_DEPTH];
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; x++) {
-        for (unsigned int i = 0; i < depth; i++) {
-          int cy = std::max(0, std::min(height - 1, y - match_y[i]));
-          int cx = std::max(0, std::min(width - 1, x - match_x[i]));
-          int pitch = src[i]->GetPitch();
-          b[i] = read_ptrs[i][cy * pitch + cx * 4]; 
-          g[i] = read_ptrs[i][cy * pitch + cx * 4 + 1]; 
-          r[i] = read_ptrs[i][cy * pitch + cx * 4 + 2]; 
-          a[i] = read_ptrs[i][cy * pitch + cx * 4 + 3];
-        }
-        dstp[x * 4] = ProcessPixel(b); dstp[x * 4 + 1] = ProcessPixel(g); dstp[x * 4 + 2] = ProcessPixel(r); dstp[x * 4 + 3] = processchroma ? ProcessPixel(a) : a[0];
-      }
-      dstp += dst->GetPitch();
-    }
-  } else if (info[0].pixel_type == VideoInfo::CS_BGR64) {
-    uint16_t b_16bit[MAX_DEPTH], g_16bit[MAX_DEPTH], r_16bit[MAX_DEPTH], a_16bit[MAX_DEPTH];
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; x++) {
-        for (unsigned int i = 0; i < depth; i++) {
-          int cy = std::max(0, std::min(height - 1, y - match_y[i]));
-          int cx = std::max(0, std::min(width - 1, x - match_x[i]));
-          int pitch = src[i]->GetPitch();
-          b_16bit[i] = read_ptrs[i][cy * pitch + cx * 8 + 0] | (read_ptrs[i][cy * pitch + cx * 8 + 1] << 8);
-          g_16bit[i] = read_ptrs[i][cy * pitch + cx * 8 + 2] | (read_ptrs[i][cy * pitch + cx * 8 + 3] << 8);
-          r_16bit[i] = read_ptrs[i][cy * pitch + cx * 8 + 4] | (read_ptrs[i][cy * pitch + cx * 8 + 5] << 8);
-          a_16bit[i] = read_ptrs[i][cy * pitch + cx * 8 + 6] | (read_ptrs[i][cy * pitch + cx * 8 + 7] << 8);
-        }
-        uint16_t median_b = ProcessPixel_16bit(b_16bit);
-        uint16_t median_g = ProcessPixel_16bit(g_16bit);
-        uint16_t median_r = ProcessPixel_16bit(r_16bit);
-        uint16_t median_a = ProcessPixel_16bit(a_16bit);
-        dstp[x * 8] = static_cast<uint8_t>(median_b); dstp[x * 8 + 1] = static_cast<uint8_t>(median_b >> 8);
-        dstp[x * 8 + 2] = static_cast<uint8_t>(median_g); dstp[x * 8 + 3] = static_cast<uint8_t>(median_g >> 8);
-        dstp[x * 8 + 4] = static_cast<uint8_t>(median_r); dstp[x * 8 + 5] = static_cast<uint8_t>(median_r >> 8);
-        dstp[x * 8 + 6] = static_cast<uint8_t>(processchroma ? median_a : a_16bit[0]); dstp[x * 8 + 7] = static_cast<uint8_t>(processchroma ? median_a >> 8 : a_16bit[0] >> 8);
-      }
-      dstp += dst->GetPitch();
-    }
-  }
-}
-
-// Processing of a stack of pixel values
-
-// Processing of a stack of pixel values
-//////////////////////////////////////////////////////////////////////////////
-
-template<typename T>
-inline T Median::ProcessPixel_T(T* values) const
-{
-  T output;
-  unsigned int sum = 0;
-  if (blend != depth) std::sort(values, values + depth);
-  for (unsigned int i = low; i < low + blend; i++) sum += values[i];
-  output = sum / blend;
-  return output;
-}
-
-inline uint16_t Median::ProcessPixel_16bit(uint16_t* values) const
-{
-  uint16_t output;
-
-  unsigned int sum = 0;
-
-  if (blend != depth) // If all clips are to be blended, there is no need to sort them
-    std::sort(values, values + depth);
-
-  for (unsigned int i = low; i < low + blend; i++)
-    sum = sum + values[i];
-
-  output = sum / blend;
-
-  return output;
-}
-
-inline unsigned char Median::ProcessPixel(unsigned char* values) const
-{
-  unsigned char output;
-
-  if (fastprocess) // Can use a fast method
-  {
-    output = fastmedian(values);
-  }
-  else // Full processing
-  {
-    unsigned int sum = 0;
-
-    if (blend != depth) // If all clips are to be blended, there is no need to sort them
-      std::sort(values, values + depth);
-
-    for (unsigned int i = low; i < low + blend; i++)
-      sum = sum + values[i];
-
-    output = sum / blend;
-  }
-
-  return output;
+  completion->Destroy();
 }
 
 
@@ -600,7 +398,7 @@ void Median::textf(PVideoFrame& dst, unsigned int& line, const char* fmt, ...)
   else if (info[0].IsRGB32()) print_rgb(dst, line, string, true, 1);
   else if (info[0].IsRGB48()) print_rgb(dst, line, string, false, 2);
   else if (info[0].IsRGB64()) print_rgb(dst, line, string, true, 2);
-  else if (info[0].IsPlanar()) print_planar(dst, line, string, info[0].ComponentSize(), (1 << info[0].BitsPerComponent()) - 1);
+  else if (info[0].IsPlanar()) print_planar(dst, line, string, info[0].ComponentSize(), (info[0].ComponentSize() == 4 ? 1 : (1 << info[0].BitsPerComponent()) - 1));
 
   line++;
 }

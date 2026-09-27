@@ -47,6 +47,12 @@ AVSValue __cdecl Create_Median(AVSValue args, void* user_data, IScriptEnvironmen
   int threads = args[11].AsInt(1);
 
   // Validation
+  if (threads < 0)
+    env->ThrowError(ERROR_PREFIX "Threads must be zero (automatic) or positive.");
+
+  if (syncx < 0 || syncy < 0 || ignoret < 0 || ignoreb < 0 || ignorel < 0 || ignorer < 0)
+    env->ThrowError(ERROR_PREFIX "Sync radii and border exclusions must be non-negative.");
+
   if (sync < 0)
     env->ThrowError(ERROR_PREFIX "Sync needs to be a positive value.");
 
@@ -75,6 +81,9 @@ AVSValue __cdecl Create_TemporalMedian(AVSValue args, void* user_data, IScriptEn
   int threads = args[4].AsInt(1);
 
   // Validation
+  if (threads < 0)
+    env->ThrowError(ERROR_PREFIX "Threads must be zero (automatic) or positive.");
+
   if (radius < 1 || radius > 12)
     env->ThrowError(ERROR_PREFIX "Radius needs to be between 1 and 12.");
 
@@ -114,8 +123,14 @@ AVSValue __cdecl Create_MedianBlend(AVSValue args, void* user_data, IScriptEnvir
   int threads = args[13].AsInt(1);
 
   // Validation
+  if (threads < 0)
+    env->ThrowError(ERROR_PREFIX "Threads must be zero (automatic) or positive.");
+
   if (low < 0 || high < 0 || low >= n || high >= n || low + high >= n)
     env->ThrowError(ERROR_PREFIX "Invalid values supplied for low and/or high limits.");
+
+  if (syncx < 0 || syncy < 0 || ignoret < 0 || ignoreb < 0 || ignorel < 0 || ignorer < 0)
+    env->ThrowError(ERROR_PREFIX "Sync radii and border exclusions must be non-negative.");
 
   if (sync < 0)
     env->ThrowError(ERROR_PREFIX "Sync needs to be a positive value.");
@@ -132,7 +147,13 @@ AVSValue __cdecl Create_MedianBlend(AVSValue args, void* user_data, IScriptEnvir
 //////////////////////////////////////////////////////////////////////////////
 const AVS_Linkage* AVS_linkage;
 
-extern "C" __declspec(dllexport) const char* __stdcall AvisynthPluginInit3(IScriptEnvironment * env, AVS_Linkage * AVS_linkage_arg)
+#ifdef _WIN32
+#define MEDIAN_EXPORT __declspec(dllexport)
+#else
+#define MEDIAN_EXPORT __attribute__((visibility("default")))
+#endif
+
+extern "C" MEDIAN_EXPORT const char* __stdcall AvisynthPluginInit3(IScriptEnvironment * env, AVS_Linkage * AVS_linkage_arg)
 {
   AVS_linkage = AVS_linkage_arg;
 
