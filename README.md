@@ -128,6 +128,17 @@ Each filter reuses its device buffers and serializes GPU submissions, making con
 
 ## Change log
 
+20260927 Unreleased (marukuru)
+
+  - Add spatial alignment with `syncx` and `syncy`, and sync comparison border exclusions with `ignore_t`, `ignore_b`, `ignore_l`, and `ignore_r`.
+  - Extend processing to high-bit-depth integer and float planes, planar RGB/RGBA and YUVA, and packed RGB48. Preserve fractional and negative float values during blending.
+  - Make all three filters safe for concurrent AviSynth+ `Prefetch` requests with `MT_NICE_FILTER` and frame-local alignment state. Use the native worker pool for row parallelism; `threads=0` selects the pool size automatically.
+  - Add `opt=0–8` CPU selection with automatic dispatch, a C++ reference path, SSE2, SSE4.1, AVX, AVX2, FMA3, FMA4, and AVX512 kernels. FMA modes accelerate float blending.
+  - Add optional OpenCL 1.2 GPU processing through `opencl=true` and `MEDIAN_ENABLE_OPENCL=ON`, disabled by default. Support integer median/blending and float median selection, with CPU fallback for float averaging and unsupported float device capabilities.
+  - Speed up row processing and sync sampling, and reuse candidate frames during alignment searches.
+  - Correct handling of per-clip pitches, subsampled chroma offsets, and temporal frame boundaries. Fix high-bit-depth debug text and Linux plugin linkage symbol collisions.
+  - Update CMake and Visual Studio builds, document the new parameters, and add CPU/OpenCL reference, boundary, and concurrent-processing tests.
+
 20220301 v0.7 (pinterf)
   - move to github: https://github.com/pinterf/Median
   - add README.md, build
