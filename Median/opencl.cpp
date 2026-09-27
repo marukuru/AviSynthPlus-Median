@@ -24,7 +24,7 @@ void check(cl_int status, const char* operation)
   if (status != CL_SUCCESS)
     throw std::runtime_error(std::string(operation) + " failed (OpenCL error " + std::to_string(status) + ")");
 }
-cl_device_id gpu_device()
+cl_device_id find_device(OpenCLDeviceType type, int index)
 {
   cl_uint count = 0;
   const cl_int status = clGetPlatformIDs(0, nullptr, &count);
@@ -33,25 +33,36 @@ cl_device_id gpu_device()
   check(status, "Platform enumeration");
   std::vector<cl_platform_id> platforms(count);
   check(clGetPlatformIDs(count, platforms.data(), nullptr), "Platform enumeration");
-  for (auto platform : platforms) {
-    cl_uint devices_count = 0;
-    cl_int result = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 0, nullptr, &devices_count);
-    if (result == CL_DEVICE_NOT_FOUND) continue;
-    check(result, "GPU enumeration");
-    std::vector<cl_device_id> devices(devices_count);
-    check(clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, devices_count, devices.data(), nullptr), "GPU enumeration");
-    for (auto device : devices) {
-      cl_bool available = CL_FALSE, compiler = CL_FALSE;
-      check(clGetDeviceInfo(device, CL_DEVICE_AVAILABLE, sizeof(available), &available, nullptr), "GPU availability query");
-      check(clGetDeviceInfo(device, CL_DEVICE_COMPILER_AVAILABLE, sizeof(compiler), &compiler, nullptr), "GPU compiler query");
-      char version[128] = {};
-      check(clGetDeviceInfo(device, CL_DEVICE_OPENCL_C_VERSION, sizeof(version), version, nullptr), "GPU language version query");
-      int major = 0, minor = 0;
-      std::sscanf(version, "OpenCL C %d.%d", &major, &minor);
-      if (available && compiler && (major > 1 || (major == 1 && minor >= 2))) return device;
+  auto enumerate = [&](OpenCLDeviceType requested) {
+    const cl_device_type flags = requested == OpenCLDeviceType::CPU ? CL_DEVICE_TYPE_CPU
+      : requested == OpenCLDeviceType::GPU ? CL_DEVICE_TYPE_GPU : CL_DEVICE_TYPE_ACCELERATOR;
+    std::vector<cl_device_id> devices;
+    for (auto platform : platforms) {
+      cl_uint device_count = 0;
+      cl_int result = clGetDeviceIDs(platform, flags, 0, nullptr, &device_count);
+      if (result == CL_DEVICE_NOT_FOUND) continue;
+      check(result, "Device enumeration");
+      if (!device_count) continue;
+      const size_t offset = devices.size();
+      devices.resize(offset + device_count);
+      check(clGetDeviceIDs(platform, flags, device_count, devices.data() + offset, nullptr), "Device enumeration");
     }
-  }
-  throw std::runtime_error("No available OpenCL 1.2 GPU with a compiler was found");
+    return devices;
+  };
+  auto usable = [](cl_device_id device) {
+    cl_bool available = CL_FALSE, compiler = CL_FALSE;
+    check(clGetDeviceInfo(device, CL_DEVICE_AVAILABLE, sizeof(available), &available, nullptr), "Device availability query");
+    check(clGetDeviceInfo(device, CL_DEVICE_COMPILER_AVAILABLE, sizeof(compiler), &compiler, nullptr), "Device compiler query");
+    if (!available || !compiler) return false;
+    char version[128] = {};
+    const cl_int result = clGetDeviceInfo(device, CL_DEVICE_OPENCL_C_VERSION, sizeof(version), version, nullptr);
+    if (result == CL_INVALID_VALUE) return false; // OpenCL 1.0 does not expose this property.
+    check(result, "Device language version query");
+    int major = 0, minor = 0;
+    std::sscanf(version, "OpenCL C %d.%d", &major, &minor);
+    return major > 1 || (major == 1 && minor >= 2);
+  };
+  return select_opencl_device<cl_device_id>(type, index, enumerate, usable);
 }
 const char* source = R"CLC(
 inline int less_value(TYPE a, TYPE b) {
@@ -116,8 +127,8 @@ struct OpenCLProcessor::Impl {
     if (queue) clReleaseCommandQueue(queue);
     if (context) clReleaseContext(context);
   }
-  void initialize() {
-    const auto device = gpu_device();
+  void initialize(OpenCLDeviceType type, int index) {
+    const auto device = find_device(type, index);
     if (component_size == 4) {
       cl_device_fp_config fp = 0;
       check(clGetDeviceInfo(device, CL_DEVICE_SINGLE_FP_CONFIG, sizeof(fp), &fp, nullptr), "Float capability query");
@@ -202,14 +213,15 @@ struct OpenCLProcessor::Impl {
     return true;
   }
 };
-OpenCLProcessor::OpenCLProcessor(int cs, int n, int low, int high) : impl(new Impl(cs, n, low, high)) { impl->initialize(); }
+OpenCLProcessor::OpenCLProcessor(int cs, int n, int low, int high, OpenCLDeviceType type, int index)
+  : impl(new Impl(cs, n, low, high)) { impl->initialize(type, index); }
 OpenCLProcessor::~OpenCLProcessor() = default;
 bool OpenCLProcessor::process(const PlaneJob& job) { return impl->process(job); }
 }
 #else
 namespace median {
 struct OpenCLProcessor::Impl {};
-OpenCLProcessor::OpenCLProcessor(int, int, int, int)
+OpenCLProcessor::OpenCLProcessor(int, int, int, int, OpenCLDeviceType, int)
 {
   throw std::runtime_error("OpenCL support was not compiled in; rebuild with MEDIAN_ENABLE_OPENCL=ON");
 }

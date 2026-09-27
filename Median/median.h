@@ -18,7 +18,7 @@ const unsigned int MAX_OPT = 9;
 class Median : public GenericVideoFilter
 {
 public:
-  Median(PClip _child, std::vector<PClip> _clips, unsigned int _low, unsigned int _high, bool _temporal, bool _processchroma, unsigned int _sync, unsigned int _syncx, unsigned int _syncy, unsigned int _samples, unsigned int _ignoret, unsigned int _ignoreb, unsigned int _ignorel, unsigned int _ignorer, bool _debug, unsigned int _threads, int opt, bool use_opencl, IScriptEnvironment* env);
+  Median(PClip _child, std::vector<PClip> _clips, unsigned int _low, unsigned int _high, bool _temporal, bool _processchroma, unsigned int _sync, unsigned int _syncx, unsigned int _syncy, unsigned int _samples, unsigned int _ignoret, unsigned int _ignoreb, unsigned int _ignorel, unsigned int _ignorer, bool _debug, unsigned int _threads, int opt, bool use_opencl, const char* device_type, int device_id, IScriptEnvironment* env);
   ~Median();
 
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;

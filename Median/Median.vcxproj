@@ -191,6 +191,7 @@
     <ClInclude Include="simd_common.h" />
     <ClInclude Include="simd_blend.h" />
     <ClInclude Include="opencl.h" />
+    <ClInclude Include="opencl_device.h" />
     <ClInclude Include="median.h" />
     <ClInclude Include="opt_med.h" />
     <ClInclude Include="print.h" />

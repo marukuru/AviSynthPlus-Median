@@ -9,9 +9,9 @@
 #include <vector>
 
 template<typename T>
-void verify(int depth, int low, int high)
+void verify(int depth, int low, int high, median::OpenCLDeviceType type = median::OpenCLDeviceType::Auto)
 {
-  median::OpenCLProcessor gpu(sizeof(T), depth, low, high);
+  median::OpenCLProcessor gpu(sizeof(T), depth, low, high, type, 0);
   for (int components : {1, 2, 3, 4}) {
     for (bool shifted : {false, true}) {
       median::PlaneJob job{};
@@ -63,6 +63,13 @@ int main()
       verify<uint8_t>(depth, 0, 1);
       verify<uint16_t>(depth, 0, 1);
       verify<float>(depth, 0, 1);
+    }
+    for (auto type : {median::OpenCLDeviceType::CPU, median::OpenCLDeviceType::GPU, median::OpenCLDeviceType::Accelerator}) {
+      try { verify<uint8_t>(3, 1, 1, type); }
+      catch (const std::runtime_error& e) {
+        const std::string error(e.what());
+        if (error.find("device_type=") == std::string::npos || (error.find("out of range") == std::string::npos && error.find("unavailable") == std::string::npos)) throw;
+      }
     }
     std::cout << "OpenCL/reference, shifts, pitches, guards and CPU fallback passed\n";
   } catch (const std::exception& e) {

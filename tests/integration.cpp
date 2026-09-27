@@ -89,6 +89,16 @@ static void verify(IScriptEnvironment* env, PClip result, const std::vector<PCli
   }
 }
 
+static void expect_error(IScriptEnvironment* env, const std::string& script, const char* message)
+{
+  try { eval(env, script); }
+  catch (const AvisynthError& e) {
+    if (!std::strstr(e.msg, message)) throw;
+    return;
+  }
+  throw std::runtime_error("Expected parameter error for: " + script);
+}
+
 static void run(IScriptEnvironment* env, const char* plugin, bool gpu)
 {
   std::cout << "Loading " << plugin << std::endl;
@@ -114,6 +124,31 @@ static void run(IScriptEnvironment* env, const char* plugin, bool gpu)
         verify(env, eval(env, "Median(c0,c1,c2,c3,c4" + options + ")" + suffix), clips, 2, 2, chroma, false);
         verify(env, eval(env, "MedianBlend(c0,c1,c2,c3,c4,low=1,high=2" + options + ")" + suffix), clips, 1, 2, chroma, false);
         verify(env, eval(env, "TemporalMedian(c0,radius=2" + options + ")" + suffix), std::vector<PClip>(5, clips[0]), 2, 2, chroma, true);
+      }
+    }
+  }
+  const std::vector<std::string> functions = {"Median(c0,c1,c2", "MedianBlend(c0,c1,c2", "TemporalMedian(c0"};
+  for (const auto& function : functions) {
+    expect_error(env, function + ",device_type=\"invalid\")", "device_type");
+    expect_error(env, function + ",device_id=-1)", "device_id");
+    // Device controls are accepted and validated even in builds without OpenCL;
+    // valid selections are ignored until OpenCL is explicitly enabled.
+    for (const char* type : {"auto", "cpu", "gpu", "accelerator"})
+      eval(env, function + ",opencl=false,device_type=\"" + type + "\",device_id=99)")->GetFrame(0, env);
+    if (gpu) expect_error(env, function + ",opencl=true,device_id=2147483647)", "device_id=2147483647");
+  }
+  if (gpu) {
+    const std::vector<PClip> clips = {env->GetVar("c0").AsClip(), env->GetVar("c1").AsClip(), env->GetVar("c2").AsClip()};
+    for (const char* type : {"cpu", "gpu", "accelerator"}) {
+      try {
+        const std::string options = std::string(",opencl=true,device_type=\"") + type + "\",device_id=0)";
+        verify(env, eval(env, "Median(c0,c1,c2" + options), clips, 1, 1, true, false);
+        verify(env, eval(env, "MedianBlend(c0,c1,c2,low=0,high=1" + options), clips, 0, 1, true, false);
+        verify(env, eval(env, "TemporalMedian(c0" + options), std::vector<PClip>(3, clips[0]), 1, 1, true, true);
+        std::cout << "Verified explicit OpenCL device_type=" << type << std::endl;
+      } catch (const AvisynthError& e) {
+        if (!(std::strstr(e.msg, "device_type=") && (std::strstr(e.msg, "out of range") || std::strstr(e.msg, "unavailable")))) throw;
+        std::cout << "No usable OpenCL device_type=" << type << " on this host" << std::endl;
       }
     }
   }

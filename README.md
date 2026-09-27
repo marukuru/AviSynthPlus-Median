@@ -23,7 +23,7 @@ The plugin provides three functions: `Median`, `TemporalMedian`, and `MedianBlen
 ### `Median`
 Calculates a pixel-by-pixel median across multiple input clips.
 ```avisynth
-Median(clip1, clip2, clip3, ..., bool chroma=true, int sync=0, int syncx=0, int syncy=0, int ignore_t=0, int ignore_b=0, int ignore_l=0, int ignore_r=0, int samples=4096, bool debug=false, int threads=1, int opt=0, bool opencl=false)
+Median(clip1, clip2, clip3, ..., bool chroma=true, int sync=0, int syncx=0, int syncy=0, int ignore_t=0, int ignore_b=0, int ignore_l=0, int ignore_r=0, int samples=4096, bool debug=false, int threads=1, int opt=0, bool opencl=false, string device_type="auto", int device_id=0)
 ```
 
 - **clip1, clip2, ...**: Requires an odd number of clips between 3 and 25. All clips must have the same format and dimensions.
@@ -37,7 +37,8 @@ Median(clip1, clip2, clip3, ..., bool chroma=true, int sync=0, int syncx=0, int 
 - **ignore_r**: Number of pixels to exclude from the right edge when comparing frames for sync (default 0).
 - **samples**: Number of points to sample for sync calculations.
 - **debug**: Set to `true` to print debug information on the output frames.
-- **opencl**: Opt in to GPU processing (default `false`); requires an OpenCL-enabled build. See below.
+- **opencl**: Opt in to OpenCL processing (default `false`); requires an OpenCL-enabled build. See below.
+- **device_type**, **device_id**: Select the OpenCL device (defaults `"auto"` and `0`). See the device controls below.
 - **opt**: CPU kernel selection (default `0`, automatic). See the table below.
 - **threads**: Maximum workers for within-frame processing using AviSynth+'s native thread pool. `0` uses the pool size; `1` disables within-frame parallelism (default). Negative values are rejected.
 
@@ -52,20 +53,21 @@ Median(clip1, clip2, clip3, sync=1, syncx=2, syncy=2, ignore_b=16)
 ### `TemporalMedian`
 Applies a temporal median filter on a single clip.
 ```avisynth
-TemporalMedian(clip, int radius=1, bool chroma=true, bool debug=false, int threads=1, int opt=0, bool opencl=false)
+TemporalMedian(clip, int radius=1, bool chroma=true, bool debug=false, int threads=1, int opt=0, bool opencl=false, string device_type="auto", int device_id=0)
 ```
 - **clip**: The input clip.
 - **radius**: Temporal radius (1 to 12, default 1).
 - **chroma**: Process chroma.
 - **debug**: Enable debug output.
-- **opencl**: Same optional GPU backend as `Median` (default `false`).
+- **opencl**: Same optional OpenCL backend as `Median` (default `false`).
+- **device_type**, **device_id**: Same OpenCL device selection as `Median` (defaults `"auto"` and `0`).
 - **opt**: Same CPU kernel selection as `Median` (default `0`).
 - **threads**: Same native thread-pool control as `Median` (default 1).
 
 ### `MedianBlend`
 A more configurable median function that allows dropping the highest and lowest extremes and blending the rest.
 ```avisynth
-MedianBlend(clip1, clip2, clip3, ..., int low=1, int high=1, bool chroma=true, int sync=0, int syncx=0, int syncy=0, int ignore_t=0, int ignore_b=0, int ignore_l=0, int ignore_r=0, int samples=4096, bool debug=false, int threads=1, int opt=0, bool opencl=false)
+MedianBlend(clip1, clip2, clip3, ..., int low=1, int high=1, bool chroma=true, int sync=0, int syncx=0, int syncy=0, int ignore_t=0, int ignore_b=0, int ignore_l=0, int ignore_r=0, int samples=4096, bool debug=false, int threads=1, int opt=0, bool opencl=false, string device_type="auto", int device_id=0)
 ```
 
 - **clip1, clip2, ...**: Requires between 3 and 25 clips.
@@ -106,7 +108,7 @@ Start with `threads=1` when using frame-level prefetch. For expensive individual
 
 ## Optional OpenCL
 
-OpenCL is disabled by default at build time and in scripts. To build it with CMake, install OpenCL development headers and the ICD loader (on Ubuntu/Debian: `ocl-icd-opencl-dev`) and a working GPU driver, then run:
+OpenCL is disabled by default at build time and in scripts. To build it with CMake, install OpenCL development headers and the ICD loader (on Ubuntu/Debian: `ocl-icd-opencl-dev`) and a working OpenCL device driver, then run:
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMEDIAN_ENABLE_OPENCL=ON
@@ -122,9 +124,25 @@ Median(clip1, clip2, clip3, opencl=true)
 Prefetch(4)
 ```
 
-The backend selects the first available OpenCL 1.2 GPU with a compiler. It supports integer median/blending and float median selection, including packed formats, spatial shifts, and chroma bypass. Float averaging stays on the CPU to retain double-precision accumulation; float processing also falls back to the CPU if the device lacks denormal or infinity/NaN support. Sync searches remain on the CPU. `opt` and `threads` control CPU work; GPU dispatch is managed by OpenCL.
+All three filters accept these optional device controls:
 
-Each filter reuses its device buffers and serializes GPU submissions, making concurrent `Prefetch` requests safe. Frame uploads and downloads add overhead, so benchmark your workload against the default CPU SIMD path. Missing build support, unavailable GPUs, allocation failures, and driver/build errors produce explicit errors when `opencl=true`.
+| Parameter | Type | Default | Meaning / accepted values |
+| --- | --- | --- | --- |
+| `device_type` | string | `"auto"` | `"cpu"`, `"gpu"`, `"accelerator"`, or `"auto"`. Auto tries accelerator, then GPU, then CPU. |
+| `device_id` | int | `0` | Zero-based device index for the requested type; must be at least `0`. For example, `device_type="gpu", device_id=1` selects the second GPU. |
+
+Device indices follow OpenCL enumeration order across all platforms for each type. With `device_type="auto"`, the requested index is tried within each type in priority order until an available device with an OpenCL 1.2 compiler is found. Explicit types report an error if the index is out of range or the selected device is unavailable or incompatible. Names are lowercase. Values are validated even when `opencl=false`, but device selection only takes effect when `opencl=true`. Selecting `"cpu"` requires an OpenCL CPU runtime; use `opencl=false` for native CPU processing.
+
+For example, select the second GPU or the first OpenCL CPU device:
+
+```avisynth
+Median(clip1, clip2, clip3, opencl=true, device_type="gpu", device_id=1)
+TemporalMedian(clip, opencl=true, device_type="cpu", device_id=0)
+```
+
+The backend supports integer median/blending and float median selection, including packed formats, spatial shifts, and chroma bypass. Float averaging uses native CPU kernels to retain double-precision accumulation; float processing also falls back to these kernels if the device lacks denormal or infinity/NaN support. Sync searches remain on the CPU. `opt` and `threads` control native CPU work; OpenCL device work is scheduled by the OpenCL runtime.
+
+Each filter reuses its device buffers and serializes OpenCL submissions, making concurrent `Prefetch` requests safe. Frame uploads and downloads add overhead, so benchmark your workload against the default CPU SIMD path. Missing build support, unavailable devices, allocation failures, and driver/build errors produce explicit errors when `opencl=true`.
 
 ## Change log
 
@@ -134,7 +152,8 @@ Each filter reuses its device buffers and serializes GPU submissions, making con
   - Extend processing to high-bit-depth integer and float planes, planar RGB/RGBA and YUVA, and packed RGB48. Preserve fractional and negative float values during blending.
   - Make all three filters safe for concurrent AviSynth+ `Prefetch` requests with `MT_NICE_FILTER` and frame-local alignment state. Use the native worker pool for row parallelism; `threads=0` selects the pool size automatically.
   - Add `opt=0–8` CPU selection with automatic dispatch, a C++ reference path, SSE2, SSE4.1, AVX, AVX2, FMA3, FMA4, and AVX512 kernels. FMA modes accelerate float blending.
-  - Add optional OpenCL 1.2 GPU processing through `opencl=true` and `MEDIAN_ENABLE_OPENCL=ON`, disabled by default. Support integer median/blending and float median selection, with CPU fallback for float averaging and unsupported float device capabilities.
+  - Add `device_type` and `device_id` controls for OpenCL CPU, GPU, and accelerator selection, with automatic accelerator → GPU → CPU priority.
+  - Add optional OpenCL 1.2 processing through `opencl=true` and `MEDIAN_ENABLE_OPENCL=ON`, disabled by default. Support integer median/blending and float median selection, with CPU fallback for float averaging and unsupported float device capabilities.
   - Speed up row processing and sync sampling, and reuse candidate frames during alignment searches.
   - Correct handling of per-clip pitches, subsampled chroma offsets, and temporal frame boundaries. Fix high-bit-depth debug text and Linux plugin linkage symbol collisions.
   - Update CMake and Visual Studio builds, document the new parameters, and add CPU/OpenCL reference, boundary, and concurrent-processing tests.
