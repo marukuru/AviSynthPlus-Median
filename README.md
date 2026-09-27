@@ -20,14 +20,29 @@ The plugin provides three functions: `Median`, `TemporalMedian`, and `MedianBlen
 ### `Median`
 Calculates a pixel-by-pixel median across multiple input clips.
 ```avisynth
-Median(clip1, clip2, clip3, ..., bool chroma=true, int sync=0, int samples=4096, bool debug=false, int threads=1)
+Median(clip1, clip2, clip3, ..., bool chroma=true, int sync=0, int syncx=0, int syncy=0, int ignore_t=0, int ignore_b=0, int ignore_l=0, int ignore_r=0, int samples=4096, bool debug=false, int threads=1)
 ```
+
 - **clip1, clip2, ...**: Requires an odd number of clips between 3 and 25. All clips must have the same format and dimensions.
 - **chroma**: Set to `false` to disable chroma processing (or alpha channel processing for RGB32).
-- **sync**: Radius for temporal sync (default 0).
+- **sync**: Radius in frames for temporal sync against the first clip (default 0).
+- **syncx**: Horizontal search radius in pixels for spatial sync against the first clip. Searches offsets from `-syncx` to `+syncx` (default 0, disabled).
+- **syncy**: Vertical search radius in pixels for spatial sync against the first clip. Searches offsets from `-syncy` to `+syncy` (default 0, disabled).
+- **ignore_t**: Number of pixels to exclude from the top edge when comparing frames for sync (default 0).
+- **ignore_b**: Number of pixels to exclude from the bottom edge when comparing frames for sync (default 0).
+- **ignore_l**: Number of pixels to exclude from the left edge when comparing frames for sync (default 0).
+- **ignore_r**: Number of pixels to exclude from the right edge when comparing frames for sync (default 0).
 - **samples**: Number of points to sample for sync calculations.
 - **debug**: Set to `true` to print debug information on the output frames.
 - **threads**: Number of threads to use for parallel processing (default 1).
+
+Spatial sync can be used with `sync=0` to align corresponding frames, or combined with temporal sync. The selected offsets are applied before calculating the median. Use non-negative values for the search radii and border exclusions. Border exclusions are measured in input-frame pixels and affect only sync comparisons; they do not crop the output. They have no effect when `sync`, `syncx`, and `syncy` are all 0.
+
+For example, search up to one frame and two pixels in either direction while ignoring the bottom 16 rows during matching:
+
+```avisynth
+Median(clip1, clip2, clip3, sync=1, syncx=2, syncy=2, ignore_b=16)
+```
 
 ### `TemporalMedian`
 Applies a temporal median filter on a single clip.
@@ -43,12 +58,13 @@ TemporalMedian(clip, int radius=1, bool chroma=true, bool debug=false, int threa
 ### `MedianBlend`
 A more configurable median function that allows dropping the highest and lowest extremes and blending the rest.
 ```avisynth
-MedianBlend(clip1, clip2, clip3, ..., int low=1, int high=1, bool chroma=true, int sync=0, int samples=4096, bool debug=false, int threads=1)
+MedianBlend(clip1, clip2, clip3, ..., int low=1, int high=1, bool chroma=true, int sync=0, int syncx=0, int syncy=0, int ignore_t=0, int ignore_b=0, int ignore_l=0, int ignore_r=0, int samples=4096, bool debug=false, int threads=1)
 ```
+
 - **clip1, clip2, ...**: Requires between 3 and 25 clips.
 - **low**: Number of lowest pixel values to discard.
 - **high**: Number of highest pixel values to discard.
-- *(Remaining parameters are the same as `Median`)*
+- *(Remaining parameters, including spatial sync and border exclusions, are the same as `Median`.)*
 
 ## Change log
 
@@ -104,6 +120,15 @@ From the 'build' folder under project root:
 
 ## Linux build instructions
 
+### Prerequisites
+
+To compile on Ubuntu or Debian-based systems, install the following packages:
+```bash
+sudo apt update
+sudo apt install build-essential cmake git
+```
+
+### Building
 * Clone repo
 
         git clone https://github.com/pinterf/Median

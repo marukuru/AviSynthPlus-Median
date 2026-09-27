@@ -9,6 +9,6 @@
 
 void print_yuyv(PVideoFrame& dst, unsigned int line, const char* string);
 void print_rgb(PVideoFrame& dst, unsigned int line, const char* string, bool alpha, int component_size);
-void print_planar(PVideoFrame& dst, unsigned int line, const char* string, int component_size);
+void print_planar(PVideoFrame& dst, unsigned int line, const char* string, int component_size, int max_val);
 
 #endif // PRINT_H

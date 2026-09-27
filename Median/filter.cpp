@@ -36,9 +36,15 @@ AVSValue __cdecl Create_Median(AVSValue args, void* user_data, IScriptEnvironmen
   // Parameters
   bool chroma = args[1].AsBool(true);
   int sync = args[2].AsInt(0);
-  int samples = args[3].AsInt(4096U);
-  bool debug = args[4].AsBool(false);
-  int threads = args[5].AsInt(1);
+  int syncx = args[3].AsInt(0);
+  int syncy = args[4].AsInt(0);
+  int ignoret = args[5].AsInt(0);
+  int ignoreb = args[6].AsInt(0);
+  int ignorel = args[7].AsInt(0);
+  int ignorer = args[8].AsInt(0);
+  int samples = args[9].AsInt(4096U);
+  bool debug = args[10].AsBool(false);
+  int threads = args[11].AsInt(1);
 
   // Validation
   if (sync < 0)
@@ -50,7 +56,7 @@ AVSValue __cdecl Create_Median(AVSValue args, void* user_data, IScriptEnvironmen
   // Set low and high so that a regular median function is achieved
   unsigned int limit = (n - 1) / 2;
 
-  return new Median(clips[0], clips, limit, limit, false, chroma, sync, samples, debug, threads, env);
+  return new Median(clips[0], clips, limit, limit, false, chroma, sync, syncx, syncy, samples, ignoret, ignoreb, ignorel, ignorer, debug, threads, env);
 }
 
 
@@ -72,7 +78,7 @@ AVSValue __cdecl Create_TemporalMedian(AVSValue args, void* user_data, IScriptEn
   if (radius < 1 || radius > 12)
     env->ThrowError(ERROR_PREFIX "Radius needs to be between 1 and 12.");
 
-  return new Median(clips[0], clips, radius, radius, true, chroma, 0, 0, debug, threads, env);
+  return new Median(clips[0], clips, radius, radius, true, chroma, 0, 0, 0, 0, 0, 0, 0, 0, debug, threads, env);
 }
 
 
@@ -97,9 +103,15 @@ AVSValue __cdecl Create_MedianBlend(AVSValue args, void* user_data, IScriptEnvir
   int high = args[2].AsInt(1);
   bool chroma = args[3].AsBool(true);
   int sync = args[4].AsInt(0);
-  int samples = args[5].AsInt(4096U);
-  bool debug = args[6].AsBool(false);
-  int threads = args[7].AsInt(1);
+  int syncx = args[5].AsInt(0);
+  int syncy = args[6].AsInt(0);
+  int ignoret = args[7].AsInt(0);
+  int ignoreb = args[8].AsInt(0);
+  int ignorel = args[9].AsInt(0);
+  int ignorer = args[10].AsInt(0);
+  int samples = args[11].AsInt(4096U);
+  bool debug = args[12].AsBool(false);
+  int threads = args[13].AsInt(1);
 
   // Validation
   if (low < 0 || high < 0 || low >= n || high >= n || low + high >= n)
@@ -111,7 +123,7 @@ AVSValue __cdecl Create_MedianBlend(AVSValue args, void* user_data, IScriptEnvir
   if (samples < 0)
     env->ThrowError(ERROR_PREFIX "Samples needs to be a positive value.");
 
-  return new Median(clips[0], clips, low, high, false, chroma, sync, samples, debug, threads, env);
+  return new Median(clips[0], clips, low, high, false, chroma, sync, syncx, syncy, samples, ignoret, ignoreb, ignorel, ignorer, debug, threads, env);
 }
 
 
@@ -124,9 +136,9 @@ extern "C" __declspec(dllexport) const char* __stdcall AvisynthPluginInit3(IScri
 {
   AVS_linkage = AVS_linkage_arg;
 
-  env->AddFunction("Median", "c+[CHROMA]b[SYNC]i[SAMPLES]i[DEBUG]b[THREADS]i", Create_Median, 0);
+  env->AddFunction("Median", "c+[CHROMA]b[SYNC]i[SYNCX]i[SYNCY]i[IGNORE_T]i[IGNORE_B]i[IGNORE_L]i[IGNORE_R]i[SAMPLES]i[DEBUG]b[THREADS]i", Create_Median, 0);
   env->AddFunction("TemporalMedian", "c[RADIUS]i[CHROMA]b[DEBUG]b[THREADS]i", Create_TemporalMedian, 0);
-  env->AddFunction("MedianBlend", "c+[LOW]i[HIGH]i[CHROMA]b[SYNC]i[SAMPLES]i[DEBUG]b[THREADS]i", Create_MedianBlend, 0);
+  env->AddFunction("MedianBlend", "c+[LOW]i[HIGH]i[CHROMA]b[SYNC]i[SYNCX]i[SYNCY]i[IGNORE_T]i[IGNORE_B]i[IGNORE_L]i[IGNORE_R]i[SAMPLES]i[DEBUG]b[THREADS]i", Create_MedianBlend, 0);
 
   return "Median of clips filter";
 }

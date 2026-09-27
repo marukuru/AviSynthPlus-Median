@@ -28,7 +28,7 @@ struct MedianJobData {
 class Median : public GenericVideoFilter
 {
 public:
-  Median(PClip _child, std::vector<PClip> _clips, unsigned int _low, unsigned int _high, bool _temporal, bool _processchroma, unsigned int _sync, unsigned int _samples, bool _debug, unsigned int _threads, IScriptEnvironment* env);
+  Median(PClip _child, std::vector<PClip> _clips, unsigned int _low, unsigned int _high, bool _temporal, bool _processchroma, unsigned int _sync, unsigned int _syncx, unsigned int _syncy, unsigned int _samples, unsigned int _ignoret, unsigned int _ignoreb, unsigned int _ignorel, unsigned int _ignorer, bool _debug, unsigned int _threads, IScriptEnvironment* env);
   ~Median();
 
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
@@ -42,7 +42,15 @@ public:
   bool temporal;
   bool processchroma;
   unsigned int sync;
+  unsigned int syncx;
+  unsigned int syncy;
   unsigned int samples;
+  unsigned int ignoret;
+  unsigned int ignoreb;
+  unsigned int ignorel;
+  unsigned int ignorer;
+  int match_x[MAX_DEPTH];
+  int match_y[MAX_DEPTH];
   bool debug;
   unsigned int threads;
 
@@ -53,7 +61,7 @@ public:
 
   unsigned char (*fastmedian)(unsigned char*);
 
-  double CompareFrames(int plane, PVideoFrame a, PVideoFrame b, unsigned int points);
+  double CompareFrames(int plane, PVideoFrame a, PVideoFrame b, unsigned int points, int dx, int dy);
   
   template<typename T>
   void ProcessPlane_T(int plane, PVideoFrame src[MAX_DEPTH], PVideoFrame& dst, IScriptEnvironment* env);

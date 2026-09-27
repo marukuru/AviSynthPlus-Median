@@ -125,7 +125,7 @@ done:
 //////////////////////////////////////////////////////////////////////////////
 // Planar colourspaces
 //////////////////////////////////////////////////////////////////////////////
-void print_planar(PVideoFrame& dst, unsigned int line, const char* string, int component_size)
+void print_planar(PVideoFrame& dst, unsigned int line, const char* string, int component_size, int max_val)
 {
   unsigned char* text_buffer;
 
@@ -148,7 +148,7 @@ void print_planar(PVideoFrame& dst, unsigned int line, const char* string, int c
       } else if (component_size == 2) {
         uint16_t* pixel = (uint16_t*)row;
         for (int x = 0; x < std::min(text_width, image_width); x++)
-          *pixel++ = text[x] ? 65535 : 0; // Y
+          *pixel++ = text[x] ? max_val : 0; // Y
       } else if (component_size == 4) {
         float* pixel = (float*)row;
         for (int x = 0; x < std::min(text_width, image_width); x++)
